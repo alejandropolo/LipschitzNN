@@ -5,7 +5,7 @@ __pycache__/
 
 ## Logs
 ./logs/
-Data/
+./Data/
 data/
 Models/
 # C extensions
