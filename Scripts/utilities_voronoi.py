@@ -595,7 +595,7 @@ def add_new_point_vectorized(finite_vor, vertices, distances, radios):
     return selected_vertex
 
 def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot, vertices, distances, 
-                          model,actfunc, global_lipschitz_constant, x_lim, y_lim,monotone_relations,variable_index,
+                          model,actfunc, global_lipschitz_constant, intervals,monotone_relations,variable_index,
                           n_variables,mode='neuralsens',plot_voronoi=False, epsilon=1e-5, max_iterations=10):
     """
     Add points to a Voronoi diagram using the furthest vertex for each point.
@@ -623,10 +623,11 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
     """
     ##################################################    ADAPTAR PARA N DIMENSIONES  -> Quitar estas lineas de abajo y pasar como argumentos
     ## Define the coordinates of the square's vertices
-    square_vertices = np.array([[x_lim[0], y_lim[0]], [x_lim[0], y_lim[1]], [x_lim[1], y_lim[1]], [x_lim[1], y_lim[0]], [x_lim[0], y_lim[0]]])
+    #square_vertices = np.array([[x_lim[0], y_lim[0]], [x_lim[0], y_lim[1]], [x_lim[1], y_lim[1]], [x_lim[1], y_lim[0]], [x_lim[0], y_lim[0]]])
 
     ## Generate vertices for a hypercube (n-dimensional cube) defined by the given interval with the given extension
-    intervals_extended = [(x_lim[0] - epsilon, x_lim[1] + epsilon), (y_lim[0] - epsilon, y_lim[1] + epsilon)]
+    #intervals_extended = [(x_lim[0] - epsilon, x_lim[1] + epsilon), (y_lim[0] - epsilon, y_lim[1] + epsilon)]
+    intervals_extended = [(x - epsilon, y + epsilon) for x, y in intervals]
     vertices_extended = generate_hypercube_vertices(intervals_extended)
 
     ## Boolean warning to print if there are points not following the monotone relation
@@ -677,8 +678,8 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
 
         derivative_sign = [v[1] for _, v in dict_radios.items()]
         ## Plot Voronoi diagram
-        if plot_voronoi:
-            plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
+        if plot_voronoi and len(intervals) == 2:
+            plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
         ## Check if the space is filled
         #space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
         space_filled, distances = check_space_filled_vectorized(finite_vor, radius_tot, vertices)
@@ -690,7 +691,8 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
             print('The retraining set is not empty and therefore the space cannot be filled: {} points'.format(x_reentrenamiento.shape[0]))
             warning = True
 
-    plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
+    if len(intervals) == 2:
+        plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
 
 
 
@@ -698,6 +700,9 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
     # Plot Voronoi diagram with dashed lines for finite regions
     fig, ax = plt.subplots(figsize=(8, 8))
     ## Comenzamos definiendo el boundary polygon
+    ## Check if fist and last element from boundary is the same if not add it
+    if not np.array_equal(boundary[0],boundary[-1]):
+       boundary = np.vstack((boundary,boundary[0]))
     boundary_polygon = Polygon(boundary)
 
     # Plot Voronoi regions
@@ -738,7 +743,7 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
 
 
     x,y = boundary_polygon.exterior.xy
-    plt.plot(x, y, 'b-', label='Square')
+    #plt.plot(x, y, 'b-', label='Square')
     # Plot original points
     ## Dibujamos ahor alos puntos simulados
     if plot_symmetric_points:
