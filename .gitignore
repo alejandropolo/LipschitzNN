@@ -12,3 +12,4 @@
 /Notebooks/Models/*
 /logs/*
 *.png
+Scripts/__pycache__/*
