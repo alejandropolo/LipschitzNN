@@ -1,33 +1,35 @@
 data_load:
-  n_samples: 50
+  n_samples: 20
   noise_constant: 0.01
   x_lim:
-  - -1
+  - 0
   - 1
   y_lim:
-  - -1
-  - 1
+  - 0
+  - 0.5
 model_architecture:
   actfunc:
   - sigmoid
   batch_size: null
   layers:
   - 2
-  - 3
+  - 5
   - 1
 training:
-  delta: 0.3
+  delta: 0.5
   delta_external: 0.0
   delta_synthetic: 0.0
   epsilon_synthetic: 0.0
   learning_rate: 0.01
   monotone_relations:
-  - 1
-  - 1
-  n_epochs: 200
-  patience: 500
-  plot_history: true
+  - 0
+  - 0
+  n_epochs: 5000
+  patience: 1000
+  plot_history: True
   save_model: false
   std_growth: 0.0
   verbose: 1
-  weight_decay: 1.0e-05
+  weight_decay: 0.5e-4
+  seed: 0
+  optimizer_type: 'Adam'

@@ -64,6 +64,8 @@ def write_yaml(file_path, data):
 
 def train(config):
     ############## LOAD TRAINING DATA ##################
+    np.random.seed(config['training']['seed'])
+    torch.manual_seed(config['training']['seed'])
 
     ### LOAD DATA
     X_train_tensor = torch.load('../Data/X_train_data.pt')
@@ -85,6 +87,7 @@ def train(config):
     ############## MODEL TRAINING ##################
     ### Define the model
     model = DNN(config['model_architecture']['layers'],activations=config['model_architecture']['actfunc'])
+    
     ## Add the initial and final activation functions
     ## Check if first and last activation functions are 'identity'
     if config['model_architecture']['actfunc'][0] != 'identity':
@@ -103,7 +106,7 @@ def train(config):
 
     mlp_model.train_adjusted_std(train_data=train_dataload,val_data=val_dataload,criterion=criterion,
                                     n_epochs=config['training']['n_epochs'],categorical_columns=[],verbose=config['training']['verbose'],n_visualized=1,
-                                    monotone_relations=config['training']['monotone_relations'],optimizer_type='Adam',
+                                    monotone_relations=config['training']['monotone_relations'],optimizer_type=config['training']['optimizer_type'],
                                     learning_rate=config['training']['learning_rate'],weight_decay=config['training']['weight_decay'],
                                     delta=config['training']['delta'],patience=config['training']['patience'],
                                     delta_synthetic=config['training']['delta_synthetic'],delta_external=config['training']['delta_external'],
