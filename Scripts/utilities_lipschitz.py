@@ -110,7 +110,7 @@ def hessian_bounding(H_bounded,D_bounded,W,norm_type=1):
 
 
 
-
+##################### REVISAR PORQUE LA ULTIMA CAPA DEBERÍA AÑADIR UN 0 EN CASO DE QUE SEA LINEAL??
 def generate_hessian_bounds(H,W,activation,norm_type=1):
     H_bounded = []
     ### Dado que la primera función de activación es la identidad se hace un bound por un 0
