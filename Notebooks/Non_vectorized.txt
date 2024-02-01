@@ -1,0 +1,106 @@
+Timer unit: 1e-09 s
+
+Total time: 1969.76 s
+File: /Users/alejandropolo/Library/CloudStorage/OneDrive-UniversidadPontificiaComillas/Escritorio/PhD/Codigo/LipschitzNN/Scripts/utilities_voronoi.py
+Function: add_points_to_voronoi at line 597
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   597                                           def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot, vertices, distances, 
+   598                                                                     model,actfunc, global_lipschitz_constant, x_lim, y_lim,monotone_relations,variable_index,
+   599                                                                     n_variables,mode='neuralsens',plot_voronoi=False, epsilon=1e-5, max_iterations=10):
+   600                                               """
+   601                                               Add points to a Voronoi diagram using the furthest vertex for each point.
+   602                                           
+   603                                               Args:
+   604                                                   original_vor (scipy.spatial.Voronoi): The original Voronoi diagram.
+   605                                                   original_points (numpy.ndarray): The original points in the Voronoi diagram.
+   606                                                   finite_vor (scipy.spatial.Voronoi): The finite Voronoi diagram (with the added symmetric points)
+   607                                                   radius_tot (numpy.ndarray): The radii for each point in the Voronoi diagram.
+   608                                                   vertices (numpy.ndarray): The vertices defining the hypercube.
+   609                                                   distances (dict): The distances for each point in the Voronoi diagram.
+   610                                                   model (torch.nn.Module): The trained model.
+   611                                                   global_lipschitz_constant (float): The global Lipschitz constant.
+   612                                                   x_lim (tuple): The x-axis limits of the hypercube.
+   613                                                   y_lim (tuple): The y-axis limits of the hypercube.
+   614                                                   monotone_relations (list): The monotone relations for each variable.
+   615                                                   variable_index (list): The indices of the variables to compute the local Lipschitz constant.
+   616                                                   n_variables (int): The number of variables.
+   617                                                   plot_voronoi (bool, optional): Whether to plot each Voronoi diagram. Defaults to False.
+   618                                                   epsilon (float, optional): The extension of the hypercube. Defaults to 1e-5. It is needed to compute symmetric points on the boundary.
+   619                                                   max_iterations (int, optional): The maximum number of iterations. Defaults to 10.
+   620                                           
+   621                                               Returns:
+   622                                                   numpy.ndarray: The updated original points in the Voronoi diagram.
+   623                                               """
+   624                                               ##################################################    ADAPTAR PARA N DIMENSIONES 
+   625                                               ## Define the coordinates of the square's vertices
+   626         1      24000.0  24000.0      0.0      square_vertices = np.array([[x_lim[0], y_lim[0]], [x_lim[0], y_lim[1]], [x_lim[1], y_lim[1]], [x_lim[1], y_lim[0]], [x_lim[0], y_lim[0]]])
+   627                                           
+   628                                               ## Generate vertices for a hypercube (n-dimensional cube) defined by the given interval with the given extension
+   629         1       2000.0   2000.0      0.0      intervals_extended = [(x_lim[0] - epsilon, x_lim[1] + epsilon), (y_lim[0] - epsilon, y_lim[1] + epsilon)]
+   630         1      10000.0  10000.0      0.0      vertices_extended = generate_hypercube_vertices(intervals_extended)
+   631                                           
+   632                                               ## Boolean warning to print if there are points not following the monotone relation
+   633         1          0.0      0.0      0.0      warning = False
+   634                                               
+   635         1       1000.0   1000.0      0.0      if mode == 'neuralsens':
+   636                                                   print('Using NeuralSens')
+   637                                                   weights, biases = get_weights_and_biases(model)
+   638         1       1000.0   1000.0      0.0      elif mode == 'autograd':
+   639         1      23000.0  23000.0      0.0          print('Using autograd')
+   640                                               else:
+   641                                                   raise ValueError('The mode must be either autograd or neuralsens')
+   642                                           
+   643      1001     930000.0    929.1      0.0      for i in range(max_iterations):
+   644                                                   ## Add new point
+   645      1000        2e+12    2e+09     83.7          #selected_vertex = add_new_point(finite_vor, vertices, distances, radius_tot)
+   646                                                   selected_vertex = add_new_point_vectorized(finite_vor, vertices, distances, radius_tot)
+   647                                                   ## Project the new point to the hypercube (because of the extension it may be outside the hypercube)
+   648      1000   57005000.0  57005.0      0.0          selected_vertex = proyection_hypercube(selected_vertex, vertices)
+   649                                                   ## Add the new point to the original points
+   650      1000   26959000.0  26959.0      0.0          original_points = np.vstack((original_points, selected_vertex))
+   651                                                   ## Add the new point to the inputs
+   652      1000   50095000.0  50095.0      0.0          inputs = torch.tensor(original_points, dtype=torch.float)
+   653                                                   
+   654                                                   ## Add the new point to the Voronoi diagram
+   655      1000 3928388000.0    4e+06      0.2          original_vor.add_points(selected_vertex.reshape(1, -1))
+   656                                                   ## Compute the new finite Voronoi diagram with the new point
+   657                                                   ##MODIFICACIÓN PARA NO TENER QUE RECALCULAR EL VORONOI
+   658      1000        6e+10    6e+07      3.0          all_points, _ = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
+   659      1000 8858999000.0    9e+06      0.4          finite_vor = Voronoi(all_points, incremental=True)
+   660                                                   
+   661      1000     872000.0    872.0      0.0          """ ## Para intentar evitar recalcular
+   662                                                   all_points, symmetric_points = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
+   663                                                   ### Check if symmetric points is not an empty array:
+   664                                                   print(symmetric_points)
+   665                                                   if symmetric_points.shape[0]!=0:        
+   666                                                       finite_vor.add_points(np.array(symmetric_points))"""
+   667                                           
+   668                                                   ## Compute the new radios for each point
+   669      1000    1229000.0   1229.0      0.0          if mode=='autograd':
+   670      2000        1e+11    7e+07      6.7              radius_tot, dict_radios, x_reentrenamiento = get_lipschitz_radius(inputs=inputs, model=model, global_lipschitz_constant=global_lipschitz_constant, 
+   671      1000     328000.0    328.0      0.0                                                                              monotone_relation=monotone_relations, variable_index=variable_index, n_variables=n_variables)
+   672                                                   elif mode=='neuralsens':
+   673                                                       radius_tot, dict_radios, x_reentrenamiento = get_lipschitz_radius_neuralsens(inputs=inputs, outputs=[], weights=weights, biases=biases, actfunc=actfunc, 
+   674                                                                                                                                   global_lipschitz_constant=global_lipschitz_constant, 
+   675                                                                                                                                   monotone_relation=monotone_relations, variable_index=variable_index, 
+   676                                                                                                                                   n_variables=n_variables)
+   677                                           
+   678      1000  122655000.0 122655.0      0.0          derivative_sign = [v[1] for _, v in dict_radios.items()]
+   679                                                   ## Plot Voronoi diagram
+   680      1000     459000.0    459.0      0.0          if plot_voronoi:
+   681                                                       plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
+   682                                                   ## Check if the space is filled
+   683      1000     997000.0    997.0      0.0          i += 1 ############# CREO QUE DEBERÍA QUITARLO
+   684      1000        1e+11    1e+08      5.5          #space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
+   685                                                   space_filled, distances = check_space_filled_vectorized(finite_vor, radius_tot, vertices)
+   686      1000     696000.0    696.0      0.0          ## Check if the space is filled and if x_reentrenamiento is empty
+   687                                                   if space_filled and x_reentrenamiento.shape[0]==0:
+   688                                                       print('The space is filled: {} after {} iterations '.format(space_filled,i))
+   689      1000    5600000.0   5600.0      0.0              break
+   690         1     158000.0 158000.0      0.0          elif x_reentrenamiento.shape[0]!=0 and not warning:
+   691         1          0.0      0.0      0.0              print('The retraining set is not empty and therefore the space cannot be filled: {} points'.format(x_reentrenamiento.shape[0]))
+   692                                                       warning = True
+   693         1 7151428000.0    7e+09      0.4  
+   694                                               plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)

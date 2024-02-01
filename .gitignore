@@ -3,3 +3,12 @@
 *.pyc
 *.pyc
 *.pyc
+
+## Discard ./Data foler
+./Data
+./logs
+# Ignore everything in the Data folder
+/Data/*
+/Notebooks/Models/*
+/logs/*
+*.png
