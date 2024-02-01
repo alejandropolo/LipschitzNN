@@ -266,7 +266,7 @@ def add_symmetric_points(vor,vertices,intervals):
 
     ## Combine original and symmetric points
     all_points = np.vstack((vor.points, np.array(symmetric_points_list).reshape(-1, vertices.shape[1]))) ### GENERALIZAR PARA N DMIENSIONES
-    return all_points
+    return all_points, np.array(symmetric_points_list).reshape(-1, vertices.shape[1])
 
 ############################### CHECK IF THE SPACE IS FILLED
 
@@ -290,7 +290,28 @@ def check_space_filled(vor,radius,vertices):
         return True ,distances
     else:
         return False ,distances
-    
+
+
+def check_space_filled_vectorized(vor, radius, vertices):
+    distances = []
+
+    for i, point in enumerate(vor.points):
+        region_idx = vor.point_region[i]
+
+        if is_inside_hypercube(point, vertices):
+            region_vertices = vor.vertices[vor.regions[region_idx]]
+            furthest_vertex = region_vertices[np.argmax(np.linalg.norm(region_vertices - point, axis=1))]
+            distance = np.linalg.norm(point - furthest_vertex)
+            distances.append(distance)
+
+    distances_array = np.array(distances)
+
+    if np.all(distances_array <= radius):
+        return True, distances_array
+    else:
+        return False, distances_array
+
+
 ############################### CHECK IF A POINT IS INSIDE A HYPERCUBE
     
 def points_inside_hypercube(points, vertices):
@@ -317,12 +338,16 @@ def hessian_bound(W,actfunc,partial_monotonic_variable,n_variables):
     Args:
         W (_type_): list of numpy arrays with the weights (W[i][1:,:]) and the biases (W[i][0,:]) of the network
     """
+     
     hessian_boud =[]
     ## First compute H_0^1
     ## Remember that ||H_0_1|| <= max|a_k_1|*||W_1_1||*||W_1|| 
     # where W_1_1 is the first row of the first layer of weights and a_k_1 is the maximum possible value of the second derivative of the activation function of the first layer
+    
+    ## Generate the vector (0,...,1(i),...,0)
     input_vector = [0] * n_variables
     input_vector[partial_monotonic_variable] = 1
+
     if actfunc[1]=='sigmoid':
         a_1 = 0.25
     else:
@@ -486,7 +511,39 @@ def add_new_point(finite_vor, vertices, distances, radios):
                 selected_vertex = furthest_vertex
     return selected_vertex
 
-def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot, vertices, distances, model, global_lipschitz_constant, x_lim, y_lim,monotone_relations,variable_index,n_variables,plot_voronoi=False, epsilon=1e-5, max_iterations=10):
+def add_new_point_vectorized(finite_vor, vertices, distances, radios):
+    np.random.seed(seed=0)
+    min_covered_points = float('inf')
+    selected_vertex = None
+
+    points = finite_vor.points
+    point_inside, indices_inside = points_inside_hypercube(points, vertices)
+
+    assert len(indices_inside) == len(distances) == len(radios), "The number of points inside the voronoi set is not the same as the distances and the radios"
+
+
+    for i, distance in enumerate(distances):
+        if distance > radios[i]:
+            point = finite_vor.points[indices_inside[i]]
+            region_idx = finite_vor.point_region[indices_inside[i]]
+            region_vertices = finite_vor.vertices[finite_vor.regions[region_idx]]
+            furthest_vertex = region_vertices[np.argmax(np.linalg.norm(region_vertices - point, axis=1))]
+
+            # Precompute distances between point_inside and furthest_vertex
+            distances_to_furthest = np.linalg.norm(point_inside - furthest_vertex, axis=1)
+
+            # Count covered points using vectorized operations
+            covered_points = np.sum(distances_to_furthest < radios)
+
+            if covered_points < min_covered_points:
+                min_covered_points = covered_points
+                selected_vertex = furthest_vertex
+
+    return selected_vertex
+
+def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot, vertices, distances, 
+                          model,actfunc, global_lipschitz_constant, x_lim, y_lim,monotone_relations,variable_index,
+                          n_variables,mode='neuralsens',plot_voronoi=False, epsilon=1e-5, max_iterations=10):
     """
     Add points to a Voronoi diagram using the furthest vertex for each point.
 
@@ -520,7 +577,8 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
 
     for i in range(max_iterations):
         ## Add new point
-        selected_vertex = add_new_point(finite_vor, vertices, distances, radius_tot)
+        #selected_vertex = add_new_point(finite_vor, vertices, distances, radius_tot)
+        selected_vertex = add_new_point_vectorized(finite_vor, vertices, distances, radius_tot)
         ## Project the new point to the hypercube (because of the extension it may be outside the hypercube)
         selected_vertex = proyection_hypercube(selected_vertex, vertices)
         ## Add the new point to the original points
@@ -543,8 +601,15 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
         space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
         
         if space_filled:
-            print('The space is filled: {} after {} iterations '.format(space_filled,i))
+        #space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
+        space_filled, distances = check_space_filled_vectorized(finite_vor, radius_tot, vertices)
+        ## Check if the space is filled and if x_reentrenamiento is empty
+        if space_filled and x_reentrenamiento.shape[0]==0:
+            print('The space is filled: {} after {} iterations '.format(space_filled,i+1))
             break
+        elif x_reentrenamiento.shape[0]!=0 and not warning:
+            print('The retraining set is not empty and therefore the space cannot be filled: {} points'.format(x_reentrenamiento.shape[0]))
+            warning = True
     plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
 
 
