@@ -362,16 +362,57 @@ def hessian_bound(W,actfunc,partial_monotonic_variable,n_variables):
     for k in range(2,len(actfunc)):
         if actfunc[k]=='sigmoid':
             a_k = 0.25
-        elif actfunc[k]=='identity': #### HAY QUE REVISAR QUE ESTA CONDICIÓN ESTÉ CORRECTA
+        elif actfunc[k]=='identity': 
             a_k = 0
+        else:
+            a_k = 1
         weights_multiplication = weights_multiplication * np.linalg.norm(W[k][1:, :], ord=2)**2
         H_0_k = a_k*weights_multiplication + hessian_boud[-1]*np.linalg.norm(W[k][1:, :], ord=2)
         hessian_boud.append(H_0_k)
+    ## Return the last element of the list
     return hessian_boud[-1]
 
+def get_weights_and_biases(model):
+    parameters = dict(model.state_dict())
+    weights = []
+    biases = []
+    for key, value in parameters.items():
+        if 'weight' in key:
+            weights.append(value.T)
+        elif 'bias' in key:
+            biases.append(value)
+    return weights, biases
+
 ############################### GET LIPSCHITZ RADIUS
+
 def get_lipschitz_radius(inputs,model,global_lipschitz_constant,monotone_relation,variable_index,n_variables):
+    """
+    Calculates the radius where the monotonicity is enforced for a given set of inputs and a neural network model.
+
+    Parameters:
+    inputs (list): List of input tensors.
+    model (torch.nn.Module): Neural network model.
+    global_lipschitz_constant (torch.Tensor): Global Lipschitz constant.
+    monotone_relation (int): Monotone relation indicator. 1 for positive monotone relation, -1 for negative monotone relation.
+    variable_index (int): Index of the variable to consider for the monotone relation and therefore for the Lipschitz radius calculation.
+    n_variables (int): Number of variables in the input tensors.
+
+    Returns:
+    radius_tot (list): List of Lipschitz radii for each input.
+    dict_radios (dict): Dictionary mapping input coordinates to their corresponding Lipschitz radii and relation indicators.
+    x_reentrenamiento (torch.Tensor): Tensor containing the inputs that do not satisfy the monotone relation.
+
+    Note:
+    - The Lipschitz radius is calculated as the ratio between the derivative and the global Lipschitz constant.
+    - The monotone relation determines whether the derivative should be positive or negative for the given variable.
+    - The function currently only supports the same monotone relation for every variable
+    """
     #################################################### AMPLIAR EL CÓDIGO PARA QUE PERMITA MULTIPLES MONOTONE RELATIONS
+    """Idea para que admita relaciones monótonas crecientes y decrecientes.
+    1) Se calcula el radio para cada variable
+    2) Si se cumple la relación monótona (ya sea creciente o decreciente) para todas las variables, se toma el mínimo de los radios (Buscamos el espacio  en el que se cumplen todas las condiciones)
+    3) Si no se cumple la relación monótona para alguna variable, se toma el máximo de los radios (Buscamos el espacio máximo en el que alguna de las condiciones falla)
+    """
     ## Comenzamos definiendo las variables que luego iremos rellenando
     radius_tot = []
     dict_radios = {}
@@ -402,27 +443,58 @@ def get_lipschitz_radius(inputs,model,global_lipschitz_constant,monotone_relatio
                 radius_tot.append(r)
                 dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
             ## Se comprueba si la derivada es mayor que 0 en todas las variables consideradas o en alguna de ellas es menor que 0
+            ## Para ello se usa la función torch.relu que devuelve 0 si el valor es negativo y el valor si es positivo
             elif torch.sum(torch.relu(-derivative))>0:
                 ## Añadimos el punto al conjunto de reentrenamiento
                 x_reentrenamiento = torch.cat((x_reentrenamiento,input.reshape(-1,n_variables)),dim=0)
-                ## Calculamos el radio como el minimo de las componentes negativas de la derivada (en valor absoluto -> Por eso tomamos el mínimo de la -derivative)
+                ## Calculamos el radio como el máximos de las componentes negativas de la derivada (en valor absoluto -> Por eso tomamos la -derivative)
                 ## Extraigo solo la parte de la derivada que no cumple la relacion
-                derivative_pos = torch.relu(-derivative)
-                ## Extraigo el maximo de la derivada que no cumple la relacion (Sin contar con aquellos que son 0 que son las posiciones en las que si que se cumple la relacion)
-                min_der = torch.max(derivative_pos[derivative_pos!=0]).item()
+                derivative_neg = torch.relu(-derivative)
+                ## Extraigo el maximo de la derivada que no cumple la relacion (Si no se cumple para una variable la relación da igual que para otra si que se cumpla)
+                max_der = torch.max(derivative_neg).item()
                 ## Divido entre la constante de lipschitz para obtener el radio 
-                r = min_der/global_lipschitz_constant.item()
+                r = max_der/global_lipschitz_constant.item()
                 radius_tot.append(r)
                 dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1]
             
             ## En caso de que sea positivo para todas las variables
             else:
                 ## Extraigo el mínimo de la derivada que cumple la relación
-                # Tomo el mínimo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r
-                min_der = torch.min(derivative).item() 
+                # Tomo el mínimo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r 
                 r = torch.min(derivative).item()/global_lipschitz_constant.item()
                 radius_tot.append(r)
                 dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,1]
+        elif monotone_relation == -1:
+            ## Si alguno de los valores de las derivadas de las variables analizadas no cumple la relacion se añade al conjunto de reentrenamiento
+            ## Chequeamos ahora si la derivada es 0 alguna de las variables consideradas
+            if (derivative == 0).any():
+                ## Añadimos el punto al conjunto de reentrenamiento
+                x_reentrenamiento = torch.cat((x_reentrenamiento,input.reshape(-1,n_variables)),dim=0)
+                ## El radio es 0
+                r = 0
+                radius_tot.append(r)
+                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
+            ## Se comprueba si la derivada es menor que 0 en todas las variables consideradas o en alguna de ellas es mayor que 0
+            elif torch.sum(torch.relu(derivative))>0:
+                ## Añadimos el punto al conjunto de reentrenamiento
+                x_reentrenamiento = torch.cat((x_reentrenamiento,input.reshape(-1,n_variables)),dim=0)
+                ## Calculamos el radio como el máximo de las componentes positivas de la derivada (el mayor espacio en el que no se cumple alguna condicion)
+                ## Extraigo solo la parte de la derivada que no cumple la relacion
+                derivative_pos = torch.relu(derivative)
+                ## Extraigo el maximo de la derivada que no cumple la relacion
+                max_der = torch.max(derivative_pos).item()
+                ## Divido entre la constante de lipschitz para obtener el radio 
+                r = max_der/global_lipschitz_constant.item()
+                radius_tot.append(r)
+                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,1]
+            
+            ## En caso de que sea negativo para todas las variables
+            else:
+                ## Extraigo el mínimo de los valores para los que se cumplen la relación
+                # Tomo el máximo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r 
+                r = torch.min(-derivative).item()/global_lipschitz_constant.item()
+                radius_tot.append(r)
+                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1]
         else:
             print('Por ahora el código solo esta preparado para relaciones monótonas crecientes')
     return radius_tot,dict_radios,x_reentrenamiento
@@ -442,42 +514,23 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
     for i,der in enumerate(derivatives):
         x = inputs[i]
         derivative = torch.tensor(der.flatten()).float()[variable_index]
-        ## Compruebo si la derivada cuadra con la monotone relation (if monotone_relation 1, derivative must be positive) else (derivative must be negative))
-        if monotone_relation == 1:
-            ## Si alguno de los valores de las derivadas de las variables analizadas no cumple la relacion se añade al conjunto de reentrenamiento
-            ## Chequeamos ahora si la derivada es 0 alguna de las variables consideradas
-            if (derivative == 0).any():
-                ## Añadimos el punto al conjunto de reentrenamiento
-                x_reentrenamiento = torch.cat((x_reentrenamiento,inputs),dim=0)
-                ## El radio es 0
-                r = 0
-                radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
-            ## Se comprueba si la derivada es mayor que 0 en todas las variables consideradas o en alguna de ellas es menor que 0
-            elif torch.sum(torch.relu(-derivative))>0:
-                ## Añadimos el punto al conjunto de reentrenamiento
-                x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
-                ## Calculamos el radio como el minimo de las componentes negativas de la derivada (en valor absoluto -> Por eso tomamos el mínimo de la -derivative)
-                ## Extraigo solo la parte de la derivada que no cumple la relacion
-                derivative_pos = torch.relu(-derivative)
-                ########################################### TOMAR EL MAXIMO (NO EL MINIMO) DE LA DERIVADA NEGATIVA
-                ## Extraigo el minimo de la derivada que no cumple la relacion (Sin contar con aquellos que son 0 que son las posiciones en las que si que se cumple la relacion)
-                min_der = torch.max(derivative_pos[derivative_pos!=0]).item()
-                ## Divido entre la constante de lipschitz para obtener el radio 
-                r = min_der/global_lipschitz_constant.item()
-                radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1]
-            
-            ## En caso de que sea positivo para todas las variables
-            else:
-                ## Extraigo el mínimo de la derivada que cumple la relación
-                # Tomo el mínimo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r
-                min_der = torch.min(derivative).item() 
-                r = torch.min(derivative).item()/global_lipschitz_constant.item()
-                radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,1]
+        if (derivative == 0).any():
+            x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
+            r = 0
+            radius_tot.append(r)
+            dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
+        elif torch.sum(torch.relu(-monotone_relation*derivative))>0:
+            x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
+            derivative_neg = torch.relu(-monotone_relation*derivative)
+            max_der = torch.max(derivative_neg).item()
+            r = max_der/global_lipschitz_constant.item()
+            radius_tot.append(r)
+            dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1*monotone_relation]
         else:
-            print('Por ahora el código solo esta preparado para relaciones monótonas crecientes')
+            r = torch.min(monotone_relation*derivative).item()/global_lipschitz_constant.item()
+            radius_tot.append(r)
+            dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,monotone_relation]
+
     return radius_tot,dict_radios,x_reentrenamiento
 
 ############################### ADD POINTS TO THE VORONOI DIAGRAM
@@ -575,6 +628,17 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
     intervals_extended = [(x_lim[0] - epsilon, x_lim[1] + epsilon), (y_lim[0] - epsilon, y_lim[1] + epsilon)]
     vertices_extended = generate_hypercube_vertices(intervals_extended)
 
+    ## Boolean warning to print if there are points not following the monotone relation
+    warning = False
+    
+    if mode == 'neuralsens':
+        print('Using NeuralSens')
+        weights, biases = get_weights_and_biases(model)
+    elif mode == 'autograd':
+        print('Using autograd')
+    else:
+        raise ValueError('The mode must be either autograd or neuralsens')
+
     for i in range(max_iterations):
         ## Add new point
         #selected_vertex = add_new_point(finite_vor, vertices, distances, radius_tot)
@@ -585,22 +649,36 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
         original_points = np.vstack((original_points, selected_vertex))
         ## Add the new point to the inputs
         inputs = torch.tensor(original_points, dtype=torch.float)
+        
         ## Add the new point to the Voronoi diagram
         original_vor.add_points(selected_vertex.reshape(1, -1))
         ## Compute the new finite Voronoi diagram with the new point
-        all_points = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
+        ##MODIFICACIÓN PARA NO TENER QUE RECALCULAR EL VORONOI
+        all_points, _ = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
         finite_vor = Voronoi(all_points, incremental=True)
+        
+        """ ## Para intentar evitar recalcular
+        all_points, symmetric_points = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
+        ### Check if symmetric points is not an empty array:
+        print(symmetric_points)
+        if symmetric_points.shape[0]!=0:        
+            finite_vor.add_points(np.array(symmetric_points))"""
+
         ## Compute the new radios for each point
-        radius_tot, dict_radios, _ = get_lipschitz_radius(inputs=inputs, model=model, global_lipschitz_constant=global_lipschitz_constant, monotone_relation=monotone_relations, variable_index=variable_index, n_variables=n_variables)
+        if mode=='autograd':
+            radius_tot, dict_radios, x_reentrenamiento = get_lipschitz_radius(inputs=inputs, model=model, global_lipschitz_constant=global_lipschitz_constant, 
+                                                                            monotone_relation=monotone_relations, variable_index=variable_index, n_variables=n_variables)
+        elif mode=='neuralsens':
+            radius_tot, dict_radios, x_reentrenamiento = get_lipschitz_radius_neuralsens(inputs=inputs, outputs=[], weights=weights, biases=biases, actfunc=actfunc, 
+                                                                                        global_lipschitz_constant=global_lipschitz_constant, 
+                                                                                        monotone_relation=monotone_relations, variable_index=variable_index, 
+                                                                                        n_variables=n_variables)
+
         derivative_sign = [v[1] for _, v in dict_radios.items()]
         ## Plot Voronoi diagram
         if plot_voronoi:
             plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
         ## Check if the space is filled
-        i += 1
-        space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
-        
-        if space_filled:
         #space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
         space_filled, distances = check_space_filled_vectorized(finite_vor, radius_tot, vertices)
         ## Check if the space is filled and if x_reentrenamiento is empty
