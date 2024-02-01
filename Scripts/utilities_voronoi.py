@@ -621,6 +621,7 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
     Returns:
         numpy.ndarray: The updated original points in the Voronoi diagram.
     """
+    ##################################################    ADAPTAR PARA N DIMENSIONES  -> Quitar estas lineas de abajo y pasar como argumentos
     ## Define the coordinates of the square's vertices
     square_vertices = np.array([[x_lim[0], y_lim[0]], [x_lim[0], y_lim[1]], [x_lim[1], y_lim[1]], [x_lim[1], y_lim[0]], [x_lim[0], y_lim[0]]])
 
@@ -688,6 +689,7 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
         elif x_reentrenamiento.shape[0]!=0 and not warning:
             print('The retraining set is not empty and therefore the space cannot be filled: {} points'.format(x_reentrenamiento.shape[0]))
             warning = True
+
     plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
 
 
@@ -763,33 +765,72 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
     plt.gca().set_aspect('equal', adjustable='box')
     plt.show()
 
-def plot_finite_voronoi_3D(vor,all_points,original_points,plot_symmetric_points=False):
+
+###### PLOT VORONOI IN 3D
+def ms(x, y, z, radius, resolution=20):
+    """Return the coordinates for plotting a sphere centered at (x,y,z)"""
+    u, v = np.mgrid[0:2*np.pi:resolution*2j, 0:np.pi:resolution*1j]
+    X = radius * np.cos(u)*np.sin(v) + x
+    Y = radius * np.sin(u)*np.sin(v) + y
+    Z = radius * np.cos(v) + z
+    return (X, Y, Z)    
+
+def plot_finite_voronoi_3D(vor,all_points,original_points,radios,vertices,plot_symmetric_points=False):
 
     # Crea una lista para almacenar los polígonos de Voronoi
     polygons = []
-
+    radii = np.random.rand(original_points.shape[0])
     # Para cada celda de Voronoi, crea un objeto Polygon3D
-    for region in vor.regions:
+    """for region in vor.regions:
         if not -1 in region and len(region) > 0:
-            vertices = [vor.vertices[i] for i in region]
-            polygons.append(go.Mesh3d(x=[v[0] for v in vertices],
-                                    y=[v[1] for v in vertices],
-                                    z=[v[2] for v in vertices],
-                                    opacity=0.2, alphahull=0, colorscale='Viridis'))
+            region_vertices = vor.vertices[region]
+            #if is_inside_hypercube(region_vertices,vertices):
+            region_vertices = [vor.vertices[i] for i in region]
+            ## Check that every vertex is inside 
+            polygons.append(go.Mesh3d(x=[v[0] for v in region_vertices],
+                                        y=[v[1] for v in region_vertices],
+                                        z=[v[2] for v in region_vertices],
+                                        opacity=0.1, alphahull=0, colorscale='Viridis'))"""
+    for region_index, region in enumerate(vor.regions):
+        if not -1 in region and len(region) > 0:
+            region_vertices = vor.vertices[region]
+            voronoi_point = vor.points[vor.point_region == region_index][0]
+            if is_inside_hypercube(voronoi_point, vertices):
+                region_vertices = [vor.vertices[i] for i in region]
+                polygons.append(go.Mesh3d(x=[v[0] for v in region_vertices],
+                                        y=[v[1] for v in region_vertices],
+                                        z=[v[2] for v in region_vertices],
+                                        opacity=0.1, alphahull=0, colorscale='Viridis'))
 
     # Crea una gráfica 3D de dispersión para los puntos de entrada
     if plot_symmetric_points:
         scatter = go.Scatter3d(x=all_points[:, 0], y=all_points[:, 1], z=all_points[:, 2], mode='markers', marker=dict(size=5))
     scatter_original = go.Scatter3d(x=original_points[:, 0], y=original_points[:, 1], z=original_points[:, 2], mode='markers', marker=dict(size=5))
 
+    data_sph =[]
+    ## PLOT SPHERES
+    for i,point in enumerate(original_points):
+        x_pns_surface, y_pns_surface, z_pns_suraface = ms(point[0], point[1], point[2], radios[i])
+        data_sph.append(go.Surface(x=x_pns_surface, y=y_pns_surface, z=z_pns_suraface, colorscale='reds', opacity=0.2, showscale=False))
     # Crea la figura 3D
     if plot_symmetric_points:
         fig = go.Figure(data=[scatter] +[scatter_original]+ polygons)
     else:
-        fig = go.Figure(data=[scatter_original]+ polygons)
+        fig = go.Figure(data=[scatter_original]+ polygons + data_sph)
+
+
+
+    # Limita los valores de x, y y z al máximo y mínimo de los puntos originales
+    x_min, x_max = np.min(original_points[:, 0]) - 1, np.max(original_points[:, 0]) + 1
+    y_min, y_max = np.min(original_points[:, 1]) - 1, np.max(original_points[:, 1]) + 1
+    z_min, z_max = np.min(original_points[:, 2]) - 1, np.max(original_points[:, 2]) + 1
 
     # Configura las opciones de diseño
-    fig.update_layout(scene=dict(aspectmode="cube"),height=800, width=800)
+    fig.update_layout(scene=dict(xaxis=dict(range=[x_min, x_max]), 
+                                yaxis=dict(range=[y_min, y_max]), 
+                                zaxis=dict(range=[z_min, z_max]), 
+                                aspectmode="cube"),
+                    height=1000, width=800)
 
     # Muestra la gráfica
     fig.show()
