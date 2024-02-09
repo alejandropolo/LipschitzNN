@@ -353,39 +353,42 @@ def hessian_bound(W,actfunc,partial_monotonic_variable,n_variables):
     Args:
         W (_type_): list of numpy arrays with the weights (W[i][1:,:]) and the biases (W[i][0,:]) of the network
     """
-     
-    hessian_boud =[]
-    ## First compute H_0^1
-    ## Remember that ||H_0_1|| <= max|a_k_1|*||W_1_1||*||W_1|| 
-    # where W_1_1 is the first row of the first layer of weights and a_k_1 is the maximum possible value of the second derivative of the activation function of the first layer
-    
-    ## Generate the vector (0,...,1(i),...,0)
-    input_vector = [0] * n_variables
-    input_vector[partial_monotonic_variable] = 1
+    ## In case there are multiple partial monotonic variables
+    hessian_bounds = []
+    for var in partial_monotonic_variable: 
+        hessian_boud =[]
+        ## First compute H_0^1
+        ## Remember that ||H_0_1|| <= max|a_k_1|*||W_1_1||*||W_1|| 
+        # where W_1_1 is the first row of the first layer of weights and a_k_1 is the maximum possible value of the second derivative of the activation function of the first layer
+        
+        ## Generate the vector (0,...,1(i),...,0)
+        input_vector = [0] * n_variables
+        input_vector[var] = 1
 
-    if actfunc[1]=='sigmoid':
-        a_1 = 0.25
-    else:
-        a_1 = 1
-    ## W_1j^1 * W_1
-    weights_multiplication = np.linalg.norm(input_vector @ W[1][1:, :], ord=2) * np.linalg.norm(W[1][1:, :], ord=2)
-    H_0_1 = a_1*weights_multiplication
-    hessian_boud.append(H_0_1)
-    
-    ## In general, H_0_k can be bounded following the next equation
-    # H_0_k <= max|a_k|*||W_1_1||*||W_1||*(||W_2||^2)*...*(||W_{k+1}||^2) + H_0_{k-1}*||W_k||
-    for k in range(2,len(actfunc)):
-        if actfunc[k]=='sigmoid':
-            a_k = 0.25
-        elif actfunc[k]=='identity': 
-            a_k = 0
+        if actfunc[1]=='sigmoid':
+            a_1 = 0.25
         else:
-            a_k = 1
-        weights_multiplication = weights_multiplication * np.linalg.norm(W[k][1:, :], ord=2)**2
-        H_0_k = a_k*weights_multiplication + hessian_boud[-1]*np.linalg.norm(W[k][1:, :], ord=2)
-        hessian_boud.append(H_0_k)
-    ## Return the last element of the list
-    return hessian_boud[-1]
+            a_1 = 1
+        ## W_1j^1 * W_1
+        weights_multiplication = np.linalg.norm(input_vector @ W[1][1:, :], ord=2) * np.linalg.norm(W[1][1:, :], ord=2)
+        H_0_1 = a_1*weights_multiplication
+        hessian_boud.append(H_0_1)
+        
+        ## In general, H_0_k can be bounded following the next equation
+        # H_0_k <= max|a_k|*||W_1_1||*||W_1||*(||W_2||^2)*...*(||W_{k+1}||^2) + H_0_{k-1}*||W_k||
+        for k in range(2,len(actfunc)):
+            if actfunc[k]=='sigmoid':
+                a_k = 0.25
+            elif actfunc[k]=='identity': 
+                a_k = 0
+            else:
+                a_k = 1
+            weights_multiplication = weights_multiplication * np.linalg.norm(W[k][1:, :], ord=2)**2
+            H_0_k = a_k*weights_multiplication + hessian_boud[-1]*np.linalg.norm(W[k][1:, :], ord=2)
+            hessian_boud.append(H_0_k)
+        ## Return the last element of the list
+        hessian_bounds.append(hessian_boud[-1])
+    return max(hessian_bounds)
 
 def get_weights_and_biases(model):
     """
