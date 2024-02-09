@@ -104,7 +104,12 @@ def train(config):
     mlp_model = MLP_Monotonic(_model_name="Prueba",_model = model)
     print('------------------ Training ------------------')
 
-    mlp_model.train_adjusted_std(train_data=train_dataload,val_data=val_dataload,criterion=criterion,
+    if config['training']['epsilon'] is not None:
+        eps = config['training']['epsilon']
+    else:
+        eps = 0.0
+
+    mlp_model.train_adjusted_std(train_data=train_dataload,val_data=val_dataload,criterion=criterion,epsilon = eps,
                                     n_epochs=config['training']['n_epochs'],categorical_columns=[],verbose=config['training']['verbose'],n_visualized=1,
                                     monotone_relations=config['training']['monotone_relations'],optimizer_type=config['training']['optimizer_type'],
                                     learning_rate=config['training']['learning_rate'],weight_decay=config['training']['weight_decay'],

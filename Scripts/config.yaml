@@ -1,12 +1,12 @@
 data_load:
-  n_samples: 20
-  noise_constant: 0.01
+  n_samples: 8
+  noise_constant: 0.05
   x_lim:
   - 0
   - 1
   y_lim:
   - 0
-  - 0.5
+  - 1.0
 model_architecture:
   actfunc:
   - sigmoid
@@ -20,16 +20,17 @@ training:
   delta_external: 0.0
   delta_synthetic: 0.0
   epsilon_synthetic: 0.0
+  epsilon: 0.0
   learning_rate: 0.01
   monotone_relations:
   - 0
-  - 0
+  - 1
   n_epochs: 5000
-  patience: 1000
+  patience: 100
   plot_history: True
   save_model: false
   std_growth: 0.0
   verbose: 1
-  weight_decay: 0.5e-4
+  weight_decay: 0.2e-5
   seed: 0
-  optimizer_type: 'Adam'
+  optimizer_type: 'LBFGS'
