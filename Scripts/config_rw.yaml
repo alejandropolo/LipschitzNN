@@ -1,0 +1,34 @@
+data_load:
+  x_lim:
+  - 0
+  - 1
+  y_lim:
+  - 0
+  - 1.0
+model_architecture:
+  actfunc:
+  - sigmoid
+  batch_size: null
+  layers:
+  - 3
+  - 5
+  - 1
+training:
+  delta: 0.5
+  delta_external: 0.0
+  delta_synthetic: 0.0
+  epsilon_synthetic: 0.5
+  epsilon: 0.1
+  learning_rate: 0.1
+  monotone_relations:
+  - 1
+  - 1
+  n_epochs: 500
+  patience: 100
+  plot_history: True
+  save_model: false
+  std_growth: 0.0
+  verbose: 1
+  weight_decay: 0.5e-4
+  seed: 0
+  optimizer_type: 'Adam'
