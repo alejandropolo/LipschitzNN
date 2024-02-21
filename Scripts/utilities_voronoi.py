@@ -760,6 +760,7 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
     if len(intervals) == 2:
         plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
 
+    return x_reentrenamiento
 
 
 def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,derivative_sign,plot_symmetric_points=False):
