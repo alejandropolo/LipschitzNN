@@ -713,8 +713,15 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
         selected_vertex = add_new_point_vectorized(finite_vor, vertices, distances, dict_radios)
         ## Project the new point to the hypercube (because of the extension it may be outside the hypercube)
         selected_vertex = proyection_hypercube(selected_vertex, vertices)
-        ## Add the new point to the original points
-        original_points = np.vstack((original_points, selected_vertex))
+
+        ## Checks if selected vertex is already in the original points
+        ## In that case the loop has to stop because the dictionary cannot have two arrays with the same key
+        if np.any(np.all(np.isclose(original_points, selected_vertex,rtol=1e-07), axis=1)):
+            print('The selected vertex is already in the original points and the vertex is {}'.format(selected_vertex))
+            break
+        else:
+            ## Add the new point to the original points
+            original_points = np.vstack((original_points, selected_vertex))
         ## Add the new point to the inputs
         inputs = torch.tensor(original_points, dtype=torch.float)
         
