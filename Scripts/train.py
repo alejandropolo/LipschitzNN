@@ -62,7 +62,7 @@ def write_yaml(file_path, data):
     with open(file_path, 'w') as file:
         yaml.dump(data, file, default_flow_style=False)
 
-def train(config):
+def train(config,external_points=None,model=None):
     ############## LOAD TRAINING DATA ##################
     np.random.seed(config['training']['seed'])
     torch.manual_seed(config['training']['seed'])
@@ -86,8 +86,13 @@ def train(config):
 
     ############## MODEL TRAINING ##################
     ### Define the model
-    model = DNN(config['model_architecture']['layers'],activations=config['model_architecture']['actfunc'])
-    
+    if not model:
+      model = DNN(config['model_architecture']['layers'],activations=config['model_architecture']['actfunc'])
+
+    ## If external_points is None and delta_external is greater than 0,, raise error
+    if external_points is None and config['training']['delta_external'] > 0:
+        raise ValueError('External points are not provided, but delta_external is greater than 0')
+
     ## Add the initial and final activation functions
     ## Check if first and last activation functions are 'identity'
     if config['model_architecture']['actfunc'][0] != 'identity':
@@ -116,7 +121,7 @@ def train(config):
                                     delta=config['training']['delta'],patience=config['training']['patience'],
                                     delta_synthetic=config['training']['delta_synthetic'],delta_external=config['training']['delta_external'],
                                     std_growth=config['training']['std_growth'],epsilon_synthetic=config['training']['epsilon_synthetic'],
-                                    model_path='./Models/checkpoint_mlp_',external_points=None,seed=2023)
+                                    model_path='./Models/checkpoint_mlp_',external_points=external_points,seed=2023)
 
     print('------------------ Training Results ------------------')
     ### Ploteado de resultados
