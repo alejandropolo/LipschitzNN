@@ -545,18 +545,14 @@ def get_lipschitz_radius(inputs,model,global_lipschitz_constant,monotone_relatio
             print('Por ahora el código solo esta preparado para relaciones monótonas crecientes')
     return radius_tot,dict_radios,x_reentrenamiento
 
-def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global_lipschitz_constant,monotone_relation,variable_index,n_variables):
-    #################################################### AMPLIAR EL CÓDIGO PARA QUE PERMITA MULTIPLES MONOTONE RELATIONS
-    ## Comenzamos definiendo las variables que luego iremos rellenando
+def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global_lipschitz_constant,monotone_relation,variable_index,n_variables, epsilon):
     radius_tot = []
     dict_radios = {}
     x_reentrenamiento = torch.tensor([]).reshape(-1,n_variables)
 
-    ## Para cada input, calculamos el radio como el cociente entre la derivada y la constante de lipschitz
-    ## Calculamos todas las derivadas
     _, _, _, _, D_accum, _, _ = calculate_first_partial_derivatives_mlp(weights, biases, actfunc, inputs, outputs,sens_end_layer=len(actfunc))
-    ## Tomamos la derivada de la salida con respecto al input
     derivatives = D_accum[-1]
+    no_points = True
     for i,der in enumerate(derivatives):
         x = inputs[i]
         derivative = torch.tensor(der.flatten()).float()[variable_index]
@@ -564,21 +560,26 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
             x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
             r = 0
             radius_tot.append(r)
-            #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
             dict_radios[repr(list(x.detach().numpy()))] = [r,0]
         elif torch.sum(torch.relu(-monotone_relation*derivative))>0:
+            no_points = False
             x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
             derivative_neg = torch.relu(-monotone_relation*derivative)
             max_der = torch.max(derivative_neg).item()
             r = max_der/global_lipschitz_constant.item()
             radius_tot.append(r)
-            #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1*monotone_relation]
             dict_radios[repr(list(x.detach().numpy()))] = [r,-1*monotone_relation]
         else:
             r = torch.min(monotone_relation*derivative).item()/global_lipschitz_constant.item()
             radius_tot.append(r)
-            #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,monotone_relation]
             dict_radios[repr(list(x.detach().numpy()))] = [r,monotone_relation]
+
+    if no_points:
+        for i,der in enumerate(derivatives):
+            x = inputs[i]
+            derivative = torch.tensor(der.flatten()).float()[variable_index]
+            if torch.sum(torch.relu(monotone_relation*derivative)) < epsilon:
+                x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
 
     return radius_tot,dict_radios,x_reentrenamiento
 
