@@ -578,8 +578,9 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
         for i,der in enumerate(derivatives):
             x = inputs[i]
             derivative = torch.tensor(der.flatten()).float()[variable_index]
-            if torch.sum(torch.relu(monotone_relation*derivative)) < epsilon:
-                x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
+            if not (derivative == 0).any() and not torch.sum(torch.relu(-monotone_relation*derivative))>0:
+                if torch.min(monotone_relation*derivative).item() < epsilon:
+                    x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
 
     return radius_tot,dict_radios,x_reentrenamiento
 
