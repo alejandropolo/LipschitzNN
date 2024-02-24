@@ -627,10 +627,11 @@ def add_new_point(finite_vor, vertices, distances, dict_radios):
                 selected_vertex = furthest_vertex
     return selected_vertex
 
-def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios):
+def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, probability=0.1):
     np.random.seed(seed=0)
     min_covered_points = float('inf')
     max_radio = float('-inf')
+    min_radio = float('inf')
     selected_vertex = None
 
     ## Extract radios values
@@ -666,10 +667,16 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios):
 
             #if covered_points < min_covered_points:
             ## If the number of covered points is less than the minimum covered points or the number of covered points is the same but the radio is greater
-            if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] > max_radio):
-                min_covered_points = covered_points
-                max_radio = radios[i]
-                selected_vertex = furthest_vertex
+            if np.random.rand() < probability:
+                if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] < min_radio):
+                    min_covered_points = covered_points
+                    min_radio = radios[i]
+                    selected_vertex = furthest_vertex
+            else:
+                if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] > max_radio):
+                    min_covered_points = covered_points
+                    max_radio = radios[i]
+                    selected_vertex = furthest_vertex
 
     return selected_vertex
 
