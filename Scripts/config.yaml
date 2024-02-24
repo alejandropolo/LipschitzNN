@@ -1,6 +1,6 @@
 data_load:
-  n_samples: 5
-  noise_constant: 0.02
+  n_samples: 8
+  noise_constant: 0.05
   x_lim:
   - 0
   - 1
@@ -20,7 +20,7 @@ training:
   delta_external: 0.0
   delta_synthetic: 0.0
   epsilon_synthetic: 0.0
-  epsilon: 0.0
+  epsilon: 0.1
   learning_rate: 0.01
   monotone_relations:
   - 1
