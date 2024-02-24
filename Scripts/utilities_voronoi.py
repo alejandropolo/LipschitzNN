@@ -584,8 +584,11 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
 
 ############################### ADD POINTS TO THE VORONOI DIAGRAM
 def add_new_point(finite_vor, vertices, distances, dict_radios):
+    """DEPRECATED
+    """
     np.random.seed(seed=0)
     min_covered_points = float('inf') ## Es una forma de asegurarnos
+    max_radio = float('-inf')
     selected_vertex = None
 
     ## Extract radios values
@@ -617,14 +620,17 @@ def add_new_point(finite_vor, vertices, distances, dict_radios):
             # This is equivalent to knowing how many of the original points cover the vertex
             covered_points = sum(1 for j in range(len(point_inside)) if np.linalg.norm(point_inside[j] - furthest_vertex) < radios[j])
             # Actualizar si este vértice cubre menos puntos originales
-            if covered_points < min_covered_points:
+            ## If the number of covered points is less than the minimum covered points or the number of covered points is the same but the radio is greater
+            if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] > max_radio):
                 min_covered_points = covered_points
+                max_radio = radios[i]
                 selected_vertex = furthest_vertex
     return selected_vertex
 
 def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios):
     np.random.seed(seed=0)
     min_covered_points = float('inf')
+    max_radio = float('-inf')
     selected_vertex = None
 
     ## Extract radios values
@@ -635,18 +641,21 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios):
 
     assert len(indices_inside) == len(distances) == len(radios), "The number of points inside the voronoi set is not the same as the distances and the radios"
 
-
+    ## Loop over the distances and the radios
     for i, distance in enumerate(distances):
+        ## Check if the distance is greater than the radio (If not the Voronoi cell is already filled)
         if distance > radios[i]:
+            ## Extract the point and the region index
             point = finite_vor.points[indices_inside[i]]
             ## Check that the radio matches the point
             point_radio = np.array(ast.literal_eval(list(dict_radios.keys())[i]),dtype=np.float32)
-            if not np.allclose(point, point_radio, atol=1e-8):
-                print('Point from voronoi set: ',point)
-                print('Point from dict_radios: ',point_radio)
-                raise ValueError('The points are not the same, and therefore the radio is not the correct one')
+            assert np.allclose(point, point_radio, atol=1e-8), "The points are not the same, and therefore the radio is not the correct one"
+            
+            ## Extract the region index and vertices for the point i
             region_idx = finite_vor.point_region[indices_inside[i]]
             region_vertices = finite_vor.vertices[finite_vor.regions[region_idx]]
+            
+            ## Extract the furthest vertex
             furthest_vertex = region_vertices[np.argmax(np.linalg.norm(region_vertices - point, axis=1))]
 
             # Precompute distances between point_inside and furthest_vertex
@@ -655,8 +664,11 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios):
             # Count covered points using vectorized operations
             covered_points = np.sum(distances_to_furthest < radios)
 
-            if covered_points < min_covered_points:
+            #if covered_points < min_covered_points:
+            ## If the number of covered points is less than the minimum covered points or the number of covered points is the same but the radio is greater
+            if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] > max_radio):
                 min_covered_points = covered_points
+                max_radio = radios[i]
                 selected_vertex = furthest_vertex
 
     return selected_vertex
