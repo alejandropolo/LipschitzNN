@@ -545,7 +545,7 @@ def get_lipschitz_radius(inputs,model,global_lipschitz_constant,monotone_relatio
             print('Por ahora el código solo esta preparado para relaciones monótonas crecientes')
     return radius_tot,dict_radios,x_reentrenamiento
 
-def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global_lipschitz_constant,monotone_relation,variable_index,n_variables, epsilon):
+def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global_lipschitz_constant,monotone_relation,variable_index,n_variables, epsilon_derivative):
     radius_tot = []
     dict_radios = {}
     x_reentrenamiento = torch.tensor([]).reshape(-1,n_variables)
@@ -579,14 +579,13 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
             x = inputs[i]
             derivative = torch.tensor(der.flatten()).float()[variable_index]
             if not (derivative == 0).any() and not torch.sum(torch.relu(-monotone_relation*derivative))>0:
-                if torch.min(monotone_relation*derivative).item() < epsilon:
+                if torch.min(monotone_relation*derivative).item() < epsilon_derivative:
                     x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
 
-    return radius_tot,dict_radios,x_reentrenamiento
+    return radius_tot,dict_radios,x_reentrenamiento,no_points
 
 ############################### ADD POINTS TO THE VORONOI DIAGRAM
-def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, probability=0.1):
-    np.random.seed(seed=0)
+def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, probability):
     min_covered_points = float('inf')
     max_radio = float('-inf')
     min_radio = float('inf')
@@ -643,7 +642,7 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, proba
 
 def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios, vertices, distances, 
                           model,actfunc, global_lipschitz_constant, intervals,monotone_relations,variable_index,
-                          n_variables,mode='neuralsens',plot_voronoi=False, epsilon=1e-5, max_iterations=10):
+                          n_variables, epsilon_derivative, probability, mode='neuralsens',plot_voronoi=False, epsilon=1e-5, max_iterations=10):
     """
     Add points to a Voronoi diagram using the furthest vertex for each point.
 
@@ -690,7 +689,7 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
     for i in range(max_iterations):
         ## Add new point
         #selected_vertex = add_new_point(finite_vor, vertices, distances, dict_radios)
-        selected_vertex = add_new_point_vectorized(finite_vor, vertices, distances, dict_radios)
+        selected_vertex = add_new_point_vectorized(finite_vor=finite_vor, vertices=vertices, distances=distances, dict_radios=dict_radios,probability=probability)
         ## Project the new point to the hypercube (because of the extension it may be outside the hypercube)
         selected_vertex = proyection_hypercube(selected_vertex, vertices)
 
@@ -721,13 +720,15 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
 
         ## Compute the new radios for each point
         if mode=='autograd':
+            ## Raise a Warning that this option is not updated
+            print('The autograd option is not updated')
             radius_tot, dict_radios, x_reentrenamiento = get_lipschitz_radius(inputs=inputs, model=model, global_lipschitz_constant=global_lipschitz_constant, 
                                                                             monotone_relation=monotone_relations, variable_index=variable_index, n_variables=n_variables)
         elif mode=='neuralsens':
-            radius_tot, dict_radios, x_reentrenamiento = get_lipschitz_radius_neuralsens(inputs=inputs, outputs=[], weights=weights, biases=biases, actfunc=actfunc, 
+            radius_tot, dict_radios, x_reentrenamiento,no_points = get_lipschitz_radius_neuralsens(inputs=inputs, outputs=[], weights=weights, biases=biases, actfunc=actfunc, 
                                                                                         global_lipschitz_constant=global_lipschitz_constant, 
                                                                                         monotone_relation=monotone_relations, variable_index=variable_index, 
-                                                                                        n_variables=n_variables)
+                                                                                        n_variables=n_variables,epsilon_derivative=epsilon_derivative)
 
         derivative_sign = [v[1] for _, v in dict_radios.items()]
         ## Plot Voronoi diagram
@@ -740,8 +741,8 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
         if space_filled and x_reentrenamiento.shape[0]==0:
             print('The space is filled: {} after {} iterations '.format(space_filled,i+1))
             break
-        elif x_reentrenamiento.shape[0]!=0 and not warning:
-            print('The retraining set is not empty and therefore the space cannot be filled: {} points'.format(x_reentrenamiento.shape[0]))
+        elif x_reentrenamiento.shape[0]!=0 and not warning and not no_points:
+            print('The retraining set is not empty and therefore the space cannot be filled')
             warning = True
 
     if len(intervals) == 2:
