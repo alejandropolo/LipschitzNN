@@ -8,6 +8,7 @@ from shapely.geometry import Polygon, Point
 from matplotlib.patches import Circle
 import plotly.graph_objects as go
 import torch
+from tqdm import tqdm
 from neuralsens import partial_derivatives as ns
 from neuralsens.partial_derivatives import calculate_second_partial_derivatives_mlp,calculate_first_partial_derivatives_mlp
 ###############################################################################################
@@ -592,6 +593,7 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, proba
     min_radio = float('inf')
     selected_vertex_max = None
     selected_vertex_min = None
+    vertex_covered_count = 0  # Initialize the counter
 
     ## Extract radios values
     radios = np.array(list(dict_radios.values()))[:,0] ## The second column is the relation indicator
@@ -636,12 +638,14 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, proba
                     min_covered_points = covered_points
                     max_radio = radios[i]
                     selected_vertex_max = furthest_vertex
-
+        else:
+            ## If the Voronoi cell is already filled, we increase the counter
+            vertex_covered_count += 1
     if np.random.rand() < probability:
         selected_vertex = selected_vertex_min
     else:
         selected_vertex = selected_vertex_max
-    return selected_vertex
+    return selected_vertex, vertex_covered_count  # Return the counter along with the selected vertex
 
 def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios, vertices, distances, 
                           model,actfunc, global_lipschitz_constant, intervals,monotone_relations,variable_index,
@@ -688,11 +692,20 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
         print('Using autograd')
     else:
         raise ValueError('The mode must be either autograd or neuralsens')
-
-    for i in range(max_iterations):
+    
+    
+    
+    pbar = tqdm(range(max_iterations), desc="Processing iterations")
+    for i in pbar:
+        ## Set description of the pbar
+        pbar.set_description("Processing iteration {}".format(i+1))
         ## Add new point
         #selected_vertex = add_new_point(finite_vor, vertices, distances, dict_radios)
-        selected_vertex = add_new_point_vectorized(finite_vor=finite_vor, vertices=vertices, distances=distances, dict_radios=dict_radios,probability=probability)
+        selected_vertex,vertex_covered_count = add_new_point_vectorized(finite_vor=finite_vor, vertices=vertices, distances=distances, dict_radios=dict_radios,probability=probability)
+        ## Show in the pbar the number of vertex covered out of the total number of vertices
+        percentage_covered = (vertex_covered_count / len(distances)) * 100
+        pbar.set_postfix({'Vertex covered': vertex_covered_count, 'Total vertices': len(distances), 'Percentage covered': f'{percentage_covered:.2f}%'})
+        
         ## Project the new point to the hypercube (because of the extension it may be outside the hypercube)
         selected_vertex = proyection_hypercube(selected_vertex, vertices)
 
