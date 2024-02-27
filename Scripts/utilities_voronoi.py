@@ -562,7 +562,7 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
             radius_tot.append(r)
             dict_radios[repr(list(x.detach().numpy()))] = [r,0]
         elif torch.sum(torch.relu(-monotone_relation*derivative))>0:
-            no_points = False
+            no_points = False ## There is at least one point not satisfying the monotone relation
             x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
             derivative_neg = torch.relu(-monotone_relation*derivative)
             max_der = torch.max(derivative_neg).item()
@@ -574,6 +574,7 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
             radius_tot.append(r)
             dict_radios[repr(list(x.detach().numpy()))] = [r,monotone_relation]
 
+    ## When no_points is True it means that there are no points not satisfying the monotone relation
     if no_points:
         for i,der in enumerate(derivatives):
             x = inputs[i]
@@ -599,6 +600,8 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, proba
     point_inside, indices_inside = points_inside_hypercube(points, vertices)
 
     assert len(indices_inside) == len(distances) == len(radios), "The number of points inside the voronoi set is not the same as the distances and the radios"
+    ## Check that not all the radios are greater than the distances
+    assert not np.all(radios >= distances), "The Voronoi cell is already filled"
 
     ## Loop over the distances and the radios
     for i, distance in enumerate(distances):
@@ -629,7 +632,7 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, proba
                     min_covered_points = covered_points
                     min_radio = radios[i]
                     selected_vertex_min = furthest_vertex
-            elif covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] > max_radio):
+            if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] > max_radio):
                     min_covered_points = covered_points
                     max_radio = radios[i]
                     selected_vertex_max = furthest_vertex
@@ -737,8 +740,8 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
         ## Check if the space is filled
         #space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
         space_filled, distances = check_space_filled_vectorized(finite_vor, dict_radios, vertices)
-        ## Check if the space is filled and if x_reentrenamiento is empty
-        if space_filled and x_reentrenamiento.shape[0]==0:
+        ## Check if the space is filled and there are no points not satisfying the monotone relation
+        if space_filled and no_points:
             print('The space is filled: {} after {} iterations '.format(space_filled,i+1))
             break
         elif x_reentrenamiento.shape[0]!=0 and not warning and not no_points:

@@ -4,7 +4,7 @@ data_load:
   - 1
   y_lim:
   - 0
-  - 1.0
+  - 1
 model_architecture:
   actfunc:
   - sigmoid
@@ -14,12 +14,12 @@ model_architecture:
   - 5
   - 1
 training:
-  delta: 0.5
+  delta: 0.1
   delta_external: 0.0
   delta_synthetic: 0.0
-  epsilon_synthetic: 0.5
+  epsilon_synthetic: 0.0
   epsilon: 0.1
-  learning_rate: 0.1
+  learning_rate: 0.01
   monotone_relations:
   - 1
   - 1
@@ -29,6 +29,6 @@ training:
   save_model: false
   std_growth: 0.0
   verbose: 1
-  weight_decay: 0.5e-4
+  weight_decay: 0.1e-3
   seed: 0
   optimizer_type: 'Adam'
