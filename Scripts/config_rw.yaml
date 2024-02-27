@@ -7,10 +7,10 @@ data_load:
   - 1
 model_architecture:
   actfunc:
-  - sigmoid
+  - tanh
   batch_size: null
   layers:
-  - 3
+  - 4
   - 5
   - 1
 training:
@@ -19,12 +19,14 @@ training:
   delta_synthetic: 0.0
   epsilon_synthetic: 0.0
   epsilon: 0.1
-  learning_rate: 0.01
+  learning_rate: 0.001
   monotone_relations:
   - 1
   - 1
-  n_epochs: 500
-  patience: 100
+  - 1
+  - 1
+  n_epochs: 5000
+  patience: 1000
   plot_history: True
   save_model: false
   std_growth: 0.0
