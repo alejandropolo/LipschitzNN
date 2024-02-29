@@ -29,6 +29,7 @@ training:
   patience: 1000
   plot_history: True
   save_model: false
+  early_stopping: True
   std_growth: 0.0
   verbose: 1
   weight_decay: 0.0e-5
