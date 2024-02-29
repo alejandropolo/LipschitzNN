@@ -247,7 +247,7 @@ class MLP_Monotonic:
     def train_adjusted_std(self,train_data,val_data,criterion,n_epochs,categorical_columns=[None],verbose=1,n_visualized=1,
                  monotone_relations=[0],optimizer_type='Adam',learning_rate=0.01,delta=0.0,weight_decay=0.0,delta_synthetic=0.0,delta_external=0.0,
                  patience=100,model_path='./Models/checkpoint_',std_syntethic=0.0,std_growth=0.0,epsilon =0.0,
-                 epsilon_synthetic=0.0,external_points = None,seed=None,keep_model=False):
+                 epsilon_synthetic=0.0,external_points = None,seed = None,keep_model = False, _early_stopping = True):
         """
         Modificacion de la función train para que vaya aumentando la varianza
         """
@@ -267,11 +267,21 @@ class MLP_Monotonic:
         # to track the average validation loss per epoch as the model trains
         avg_valid_losses = [] 
 
+        if _early_stopping:
+            print('Using early stopping')
+            # If windows system
+            if os.name == 'nt':
+                data_folder = "..\\Models"
+            elif os.name == 'posix':
+                data_folder = "../Models"
+            else:
+                raise ValueError('The operative system is not valid')
+            os.makedirs(data_folder, exist_ok=True)
+            # initialize the early_stopping object
+            model_path_timestamp = Utilities.add_timestamp(model_path)
+            path = model_path_timestamp+'.pt'
+            early_stopping = EarlyStopping(path=path,patience=patience, verbose=False)
         
-        # initialize the early_stopping object
-        model_path_timestamp = Utilities.add_timestamp(model_path)
-        path = model_path_timestamp+'.pt'
-        early_stopping = EarlyStopping(path=path,patience=patience, verbose=False)
 
         ## Tipo de optimizador
         if optimizer_type == 'SGD':
@@ -493,17 +503,18 @@ class MLP_Monotonic:
             
             # early_stopping needs the validation loss to check if it has decresed, 
             # and if it has, it will make a checkpoint of the current model
-            early_stopping(valid_loss, self._model)
+            if _early_stopping:
+                early_stopping(valid_loss, self._model)
 
-            if early_stopping.early_stop:
-                print("Early stopping at epoch %d" %(epoch))
-                break
-        
-        # load the last checkpoint with the best model
-        self._model.load_state_dict(torch.load(path))
-        ## Delete model in model path if keep_model is False
-        if not keep_model:
-            os.remove(path)
+                if early_stopping.early_stop:
+                    print("Early stopping at epoch %d" %(epoch))
+                    break
+        if _early_stopping:   
+            # load the last checkpoint with the best model
+            self._model.load_state_dict(torch.load(path))
+            ## Delete model in model path if keep_model is False
+            if not keep_model:
+                os.remove(path)
         
         
 

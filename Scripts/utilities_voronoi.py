@@ -693,8 +693,6 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
     else:
         raise ValueError('The mode must be either autograd or neuralsens')
     
-    
-    
     pbar = tqdm(range(max_iterations), desc="Processing iterations")
     for i in pbar:
         ## Set description of the pbar

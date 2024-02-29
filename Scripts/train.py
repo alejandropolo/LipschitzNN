@@ -77,7 +77,7 @@ def train(config,external_points=None,model=None):
     ## Convert to pytorch data load
     n_samples = len(X_train_tensor)
     train_dt = TensorDataset(X_train_tensor,y_train_tensor) # create your datset
-    train_dataload = DataLoader(train_dt,batch_size=64) # create your dataloader
+    train_dataload = DataLoader(train_dt,batch_size=n_samples) # create your dataloader
 
     ## Convert to pytorch data load
     n_samples = len(X_test_tensor)
@@ -121,7 +121,7 @@ def train(config,external_points=None,model=None):
                                     delta=config['training']['delta'],patience=config['training']['patience'],
                                     delta_synthetic=config['training']['delta_synthetic'],delta_external=config['training']['delta_external'],
                                     std_growth=config['training']['std_growth'],epsilon_synthetic=config['training']['epsilon_synthetic'],
-                                    model_path='./Models/checkpoint_mlp_',external_points=external_points,seed=2023)
+                                    model_path='./Models/checkpoint_mlp_',external_points=external_points,seed=2023,_early_stopping=config['training']['early_stopping'],)
 
     print('------------------ Training Results ------------------')
     ### Ploteado de resultados
