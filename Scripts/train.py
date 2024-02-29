@@ -77,7 +77,7 @@ def train(config,external_points=None,model=None):
     ## Convert to pytorch data load
     n_samples = len(X_train_tensor)
     train_dt = TensorDataset(X_train_tensor,y_train_tensor) # create your datset
-    train_dataload = DataLoader(train_dt,batch_size=n_samples) # create your dataloader
+    train_dataload = DataLoader(train_dt,batch_size=64) # create your dataloader
 
     ## Convert to pytorch data load
     n_samples = len(X_test_tensor)
