@@ -11,6 +11,8 @@ import torch
 from tqdm import tqdm
 from neuralsens import partial_derivatives as ns
 from neuralsens.partial_derivatives import calculate_second_partial_derivatives_mlp,calculate_first_partial_derivatives_mlp
+from scipy.spatial import ConvexHull
+
 ###############################################################################################
 ########################################## FUNCTIONS ##########################################
 ###############################################################################################
@@ -240,7 +242,60 @@ def proyection_hypercube(point, hypercube):
 
         # Return the projected point as a numpy array
         return np.array(projected_point)
+    
+def proyection_hypercube_vectorized(points, hypercube):
+    """
+    Given an array of points and a hypercube, returns the projection of each point onto the hypercube.
 
+    Args:
+        points (numpy.ndarray): The points to be projected. Each row represents a point.
+        hypercube (numpy.ndarray): The hypercube defined by its vertices.
+
+    Returns:
+        numpy.ndarray: The projected points. Each row represents a projected point.
+
+    Example of use:
+    n = 3  # Number of variables
+    intervals = [(0, 1), (0, 2), (0, 0.5)]  # Example intervals for each variable
+
+    vertices = utilities_voronoi.generate_hypercube_vertices(intervals)
+    points = np.array([[1.1,2.5,0.2], [0.5, 2.5, 0.1]]) 
+    proyection_hypercube(points,vertices) -> array([[1,2.0,0.2], [0.5, 2.0, 0.1]])
+    """
+    # Extract the minimum and maximum coordinates of the hypercube
+    min_coords = hypercube.min(axis=0)
+    max_coords = hypercube.max(axis=0)
+
+    # Initialize an empty list to store the projected points
+    projected_points = []
+
+    # Iterate over each point
+    for point in points:
+        # Check if the point is inside the hypercube
+        if is_inside_hypercube(point, hypercube):
+            # If the point is inside the hypercube, append it as is
+            projected_points.append(point)
+        else:
+            # If the point is outside the hypercube, project it onto the hypercube
+            # The projection consists of reducing the coordinates that are outside the hypercube
+            # to the minimum or maximum values of the hypercube
+
+            # Iterate over each coordinate of the point
+            projected_point = []
+            for i in range(len(point)):
+                # Check if the coordinate is within the hypercube
+                if point[i] < min_coords[i]:
+                    projected_point.append(min_coords[i])
+                elif point[i] > max_coords[i]:
+                    projected_point.append(max_coords[i])
+                else:
+                    projected_point.append(point[i])
+
+            # Append the projected point to the list of projected points
+            projected_points.append(projected_point)
+
+    # Return the projected points as a numpy array
+    return np.array(projected_points)
 ############################### ADD SYMMETRIC POINTS
 
 def add_symmetric_points(vor,vertices,intervals):
@@ -327,6 +382,10 @@ def check_space_filled_vectorized(vor, dict_radios, vertices):
     else:
         return False, distances_array
 
+
+def compute_polytope_volume(vertices):
+    hull = ConvexHull(vertices)
+    return hull.volume
 
 ############################### CHECK IF A POINT IS INSIDE A HYPERCUBE
     
@@ -594,6 +653,7 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, proba
     selected_vertex_max = None
     selected_vertex_min = None
     vertex_covered_count = 0  # Initialize the counter
+    volume_covered = 0  # Initialize the volume of the polytope
 
     ## Extract radios values
     radios = np.array(list(dict_radios.values()))[:,0] ## The second column is the relation indicator
@@ -639,13 +699,30 @@ def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, proba
                     max_radio = radios[i]
                     selected_vertex_max = furthest_vertex
         else:
+            ## Extract the point and the region index
+            point = finite_vor.points[indices_inside[i]]
+            ## Check that the radio matches the point
+            point_radio = np.array(ast.literal_eval(list(dict_radios.keys())[i]),dtype=np.float32)
+            assert np.allclose(point, point_radio, atol=1e-8), "The points are not the same, and therefore the radio is not the correct one"
+            
+            ## Extract the region index and vertices for the point i
+            region_idx = finite_vor.point_region[indices_inside[i]]
+            region_vertices = finite_vor.vertices[finite_vor.regions[region_idx]]
+
             ## If the Voronoi cell is already filled, we increase the counter
             vertex_covered_count += 1
+            ## If the voronoi cell is filled compute the volume of the polytope
+            
+            ##Project the points inside the hypercube
+            #region_vertices = proyection_hypercube_vectorized(region_vertices, vertices)
+            volume = compute_polytope_volume(region_vertices) 
+            volume_covered += volume
+
     if np.random.rand() < probability:
         selected_vertex = selected_vertex_min
     else:
         selected_vertex = selected_vertex_max
-    return selected_vertex, vertex_covered_count  # Return the counter along with the selected vertex
+    return selected_vertex,volume_covered, vertex_covered_count  # Return the counter along with the selected vertex
 
 def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios, vertices, distances, 
                           model,actfunc, global_lipschitz_constant, intervals,monotone_relations,variable_index,
@@ -699,10 +776,11 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
         pbar.set_description("Processing iteration {}".format(i+1))
         ## Add new point
         #selected_vertex = add_new_point(finite_vor, vertices, distances, dict_radios)
-        selected_vertex,vertex_covered_count = add_new_point_vectorized(finite_vor=finite_vor, vertices=vertices, distances=distances, dict_radios=dict_radios,probability=probability)
+        selected_vertex,volume_covered,vertex_covered_count = add_new_point_vectorized(finite_vor=finite_vor, vertices=vertices, distances=distances, dict_radios=dict_radios,probability=probability)
         ## Show in the pbar the number of vertex covered out of the total number of vertices
         percentage_covered = (vertex_covered_count / len(distances)) * 100
-        pbar.set_postfix({'Vertex covered': vertex_covered_count, 'Total vertices': len(distances), 'Percentage covered': f'{percentage_covered:.2f}%'})
+        percentage_volume_covered = (volume_covered / compute_polytope_volume(vertices_extended)) * 100
+        pbar.set_postfix({'Percentage of vertex covered': f'{percentage_covered:.2f}%', 'Percentage of Volume Verified': f'{percentage_volume_covered:.2f}%'})
         
         ## Project the new point to the hypercube (because of the extension it may be outside the hypercube)
         selected_vertex = proyection_hypercube(selected_vertex, vertices)
