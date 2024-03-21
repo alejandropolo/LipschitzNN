@@ -488,6 +488,7 @@ def get_weights_and_biases(model):
 
 def get_lipschitz_radius(inputs,model,global_lipschitz_constant,monotone_relation,variable_index,n_variables):
     """
+    DEPRECATED
     Calculates the radius where the monotonicity is enforced for a given set of inputs and a neural network model.
 
     Parameters:
@@ -609,6 +610,12 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
     radius_tot = []
     dict_radios = {}
     x_reentrenamiento = torch.tensor([]).reshape(-1,n_variables)
+    ## Asser that the length of monotonous_relation is the same as the number of variables and the legnth of variable_index
+    assert len(monotone_relation) == len(variable_index), "The length of the monotone relation and the variable index must be the same"
+    ## Check if monotone_relation is a tensor
+    if not isinstance(monotone_relation,torch.Tensor):
+        monotone_relation = torch.tensor(monotone_relation).float()
+    
 
     _, _, _, _, D_accum, _, _ = calculate_first_partial_derivatives_mlp(weights, biases, actfunc, inputs, outputs,sens_end_layer=len(actfunc))
     derivatives = D_accum[-1]
@@ -628,11 +635,11 @@ def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global
             max_der = torch.max(derivative_neg).item()
             r = max_der/global_lipschitz_constant.item()
             radius_tot.append(r)
-            dict_radios[repr(list(x.detach().numpy()))] = [r,-1*monotone_relation]
+            dict_radios[repr(list(x.detach().numpy()))] = [r,-1]
         else:
             r = torch.min(monotone_relation*derivative).item()/global_lipschitz_constant.item()
             radius_tot.append(r)
-            dict_radios[repr(list(x.detach().numpy()))] = [r,monotone_relation]
+            dict_radios[repr(list(x.detach().numpy()))] = [r,1]
 
     ## When no_points is True it means that there are no points not satisfying the monotone relation
     if no_points:
