@@ -20,7 +20,7 @@ if sys.platform == 'darwin':
     sys.path.insert(0,'/Users/alejandropolo/Library/CloudStorage/OneDrive-UniversidadPontificiaComillas/Escritorio/PhD/Codigo/LipschitzNN/')
     sys.path.insert(0,'/Users/alejandropolo/Library/CloudStorage/OneDrive-UniversidadPontificiaComillas/Escritorio/IIT/NN Monotonic/Scripts/')
 
-import MLP_Monotonic
+import MonoNN
 import Utilities as Utilities
 from DNN import DNN
 import utilities_voronoi
@@ -28,10 +28,10 @@ import importlib
 
 from utilities_voronoi import *
 importlib.reload(utilities_voronoi)
-importlib.reload(MLP_Monotonic)
+importlib.reload(MonoNN)
 importlib.reload(Utilities)
 
-from MLP_Monotonic import MLP_Monotonic
+from MonoNN import MonoNN
 
 
 ## GENERAR LOS LOGS
@@ -106,7 +106,7 @@ def train(config,external_points=None,model=None):
     criterion = nn.MSELoss()
 
     ## Start the class of the model
-    mlp_model = MLP_Monotonic(_model_name="Prueba",_model = model)
+    mlp_model = MonoNN(_model_name="Prueba",_model = model)
     print('------------------ Training ------------------')
 
     if config['training']['epsilon'] is not None:

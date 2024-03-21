@@ -17,7 +17,7 @@ import torch.nn as nn
 import plotly.graph_objs as go
 import plotly.express as px
 from sklearn.metrics import accuracy_score
-
+import math
 import Utilities as Utilities
 import importlib
 import sys
@@ -45,7 +45,7 @@ logger = logging.getLogger()
 ### Seteado del nivel
 logger.setLevel(logging.INFO)
 
-class MLP_Monotonic:
+class MonoNN:
 
     def __init__(self,_model_name,_model):
         self._model_name = _model_name
@@ -79,171 +79,11 @@ class MLP_Monotonic:
     def resume(model, filename):
         model.load_state_dict(torch.load(filename))
 
-    def train_delta_decay(self,train_data,val_data,criterion,n_epochs,verbose=1,n_visualized=1,
-                 monotone_relations=[0],optimizer_type='Adam',learning_rate=0.01,delta=0.5,weight_decay=0.0,
-                 patience=100,model_path='./Models/checkpoint_'):
-        """
-        Modificación para añadir un decay en la penalizacion        
-        """
-        # to track the training loss as the model trains
-        train_losses = []
-        # to track the training loss as the model trains
-        train_losses_modified = []
-        # to track the validation loss as the model trains
-        valid_losses = []
-        # to track the average training loss per epoch as the model trains
-        avg_train_losses = []
-        # to track the average training loss per epoch as the model trains
-        avg_train_losses_modified = []
-        # to track the average validation loss per epoch as the model trains
-        avg_valid_losses = [] 
-
-        
-        # initialize the early_stopping object
-        ## Generate model path
-        model_path_timestamp = Utilities.add_timestamp(model_path)
-        path = model_path_timestamp+'.pt'
-        early_stopping = EarlyStopping(path=path,patience=patience, verbose=False)
-
-        ## Tipo de optimizador
-        if optimizer_type == 'SGD':
-            optimizer = SGD(self._model.parameters(),lr=learning_rate, momentum=0.9)
-        elif optimizer_type == 'Adam':
-            optimizer = Adam(self._model.parameters(),lr=learning_rate,weight_decay=weight_decay)
-        elif optimizer_type == 'LBFGS':
-            optimizer = LBFGS(self._model.parameters(),lr=learning_rate)
-
-        
-        ## El número de variables de entrada
-        n_vars = len(monotone_relations)
-
-        ## Indices de las variables monótonas (crec o decrec)
-        var_mono_crec = Utilities.encontrar_indices(monotone_relations,1)
-        var_mono_decrec = Utilities.encontrar_indices(monotone_relations,-1)
-
-        for epoch in range(n_epochs+1):
-            ###################
-            # train the model #
-            ###################
-
-            ## Activamos el modulo de entrenamiento
-            self._model.train()
-
-            for i, (inputs,targets) in enumerate(train_data):
-                
-            
-                # Se resetea el gradiente
-                optimizer.zero_grad()
-
-                # Forward
-                yhat = self._model(inputs)
-
-                # Loss
-                loss = criterion(yhat,targets)
-
-                ## Se añade el coeficiente corrector
-                jacob=self.batch_jacobian(inputs)
-
-                ## Si la relacion es creciente (-relu) y si decreciente (relu)
-                adjusted_loss_crec = torch.sum(torch.relu(-jacob[0, :, var_mono_crec]))
-                adjusted_loss_decrec = torch.sum(torch.relu(jacob[0, :, var_mono_decrec]))
-
-                # Ajustar el valor de delta
-                delta_mod = delta / (1 + 0.05 * epoch)
-                loss_modified = loss + delta_mod*(adjusted_loss_decrec+adjusted_loss_crec)
-                # Backward
-                loss_modified.backward()
-
-                # Step
-                if optimizer_type == 'LBFGS':
-                    optimizer.step(closure=lambda: self.closure(inputs, targets, criterion, optimizer))
-                else:
-                    optimizer.step()
-                
-                # Record training loss
-                train_losses.append(loss.item())
-                train_losses_modified.append(loss_modified.item())
-
-            ######################    
-            # validate the model #
-            ######################
-
-            # Almacenamos la informacion de la validacion
-            self._model.eval() #Switch a modo evaluacion
-            
-            with torch.no_grad():
-                for x,y in val_data:
-                    # Forward
-                    out = self._model(x)
-                    # Loss
-                    loss_val = criterion(out,y)
-                    # Record validation loss
-                    valid_losses.append(loss_val.item())
-
-            # calculate average loss over an epoch
-            train_loss = np.average(train_losses)
-            train_loss_modified = np.average(train_losses_modified)
-            valid_loss = np.average(valid_losses)
-            avg_train_losses.append(train_loss)
-            avg_train_losses_modified.append(train_loss_modified)
-            avg_valid_losses.append(valid_loss)
-
-                    
-                
-            with torch.no_grad():
-                ## El número de variables de entrada
-                n_vars = inputs.shape[1]
-                epoch_len = len(str(n_epochs))
-
-                ## Dependiendo del tipo se printea más o menos contenido
-                if verbose==2:
-                    if epoch % n_visualized ==0:
-                        print_msg = (f'[{epoch:>{epoch_len}}/{n_epochs:>{epoch_len}}]')
-                        print(print_msg,end=' ')
-                        print('Train Loss %f, Train Loss Mod %f, Val Loss %f' %(float(train_loss),float(train_loss_modified),float(valid_loss)),end=' ')
-                        for i in range(n_vars):
-                            if i in var_mono_crec:
-                                print('Minimum Jacobian x_{}  %f'.format(i+1) %(float(jacob[0,:, i].min())),end=', ')
-                            elif i in var_mono_decrec:
-                                print('Maximum Jacobian x_{}  %f'.format(i+1) %(float(jacob[0,:, i].max())),end=', ')
-                            else:
-                                print('(Min Jacobian x_{}  %f, Max Jacobian x_{} %f )'.format(i+1,i+1) %(float(jacob[0,:, i].min()),float(jacob[0,:, i].max())))
-                elif verbose==1:
-                    print_msg = (f'[{epoch:>{epoch_len}}/{n_epochs:>{epoch_len}}]')
-                    print(print_msg,end=' ')
-                    print('Train Loss %f, Train Loss Mod %f, Val Loss %f' %(float(train_loss),float(train_loss_modified),float(valid_loss)))
-                else:
-                    if epoch == n_epochs:
-                        ## Only print in last epoch
-                        print_msg = (f'[{epoch:>{epoch_len}}/{n_epochs:>{epoch_len}}]')
-                        print(print_msg,end=' ')
-                        print('Train Loss %f, Train Loss Mod %f, Val Loss %f' %(float(train_loss),float(train_loss_modified),float(valid_loss)))
-
-            # clear lists to track next epoch
-            train_losses = []
-            train_losses_modified = []
-            valid_losses = []
-
-            
-            # early_stopping needs the validation loss to check if it has decresed, 
-            # and if it has, it will make a checkpoint of the current model
-            early_stopping(valid_loss, self._model)
-
-            if early_stopping.early_stop:
-                print("Early stopping")
-                break
-        
-        # load the last checkpoint with the best model
-        self._model.load_state_dict(torch.load(path))
-
-        ## Almacenamos las curvas de entrenamiento
-        self._avg_train_losses = avg_train_losses
-        self._avg_train_losses_modified = avg_train_losses_modified
-        self._avg_valid_losses = avg_valid_losses
-
-        ## Almacenado en la propia clase
-        self._jacobian = jacob
-
+    def adjust_penalization(self,n_epochs, current_epoch, init_pen, final_pen):
+        growth_rate = math.pow(final_pen / init_pen, 1/n_epochs)
+        adjusted_value = init_pen * math.pow(growth_rate, current_epoch)
+        return adjusted_value
+    
     def train_adjusted_std(self,train_data,val_data,criterion,n_epochs,categorical_columns=[None],verbose=1,n_visualized=1,
                  monotone_relations=[0],optimizer_type='Adam',learning_rate=0.01,delta=0.0,weight_decay=0.0,delta_synthetic=0.0,delta_external=0.0,
                  patience=100,model_path='./Models/checkpoint_',std_syntethic=0.0,std_growth=0.0,epsilon =0.0,
@@ -264,8 +104,15 @@ class MLP_Monotonic:
         avg_train_losses = []
         # to track the average training loss per epoch as the model trains
         avg_train_losses_modified = []
+        # to track the average penalization loss per epoch as the model trains
+        avg_penalization_losses = []
         # to track the average validation loss per epoch as the model trains
         avg_valid_losses = [] 
+
+        ## Save the initial values of the penalization parameters
+        #initial_delta = delta
+        #initial_delta_synthetic = delta_synthetic
+        #initial_delta_external = delta_external
 
         if _early_stopping:
             print('Using early stopping')
@@ -329,6 +176,7 @@ class MLP_Monotonic:
                     ## Evaluamos el jacobiano en los datos de entrenamiento
 
                     if delta>0:
+                        #delta = self.adjusted_penalization(n_epochs, epoch, initial_delta, initial_delta*10)
                         ## Se añade el coeficiente corrector
                         jacob=self.batch_jacobian(inputs)
                         ## Si la relacion es creciente (-relu) y si decreciente (relu)
@@ -341,6 +189,7 @@ class MLP_Monotonic:
 
                     ## Evaluamos el jacobiano en datos sintéticos generados
                     if delta_synthetic>0:
+                        #delta_synthetic = self.adjusted_penalization(n_epochs, epoch, initial_delta_synthetic, initial_delta_synthetic*10)
 
                         with torch.no_grad():  
                             synthetic_data=Utilities.generate_synthetic_tensor_categorical(inputs,100,categorical_columns,mean=0,std=std_syntethic)
@@ -356,6 +205,7 @@ class MLP_Monotonic:
                     
                     ##Evaluamos el jacobiano en puntos externos
                     if delta_external>0:
+                        #delta_external = self.adjusted_penalization(n_epochs, epoch, initial_delta_external, initial_delta_external*10)
                         # Calcular el jacobiano en puntos externos y agregar la penalización al loss
                         jacob_external = self.batch_jacobian(external_points)
                         adjusted_loss_crec_external = torch.sum(torch.relu(-jacob_external[0, :, var_mono_crec]+epsilon))
@@ -376,6 +226,7 @@ class MLP_Monotonic:
                     loss = criterion(outputs, targets)
 
                     if delta>0:
+                        #delta = self.adjusted_penalization(n_epochs, epoch, initial_delta, initial_delta*10)
                         ## Se añade el coeficiente corrector
                         jacob=self.batch_jacobian(inputs)
                         ## Si la relacion es creciente (-relu) y si decreciente (relu)
@@ -388,6 +239,7 @@ class MLP_Monotonic:
 
                     ## Evaluamos el jacobiano en datos sintéticos generados
                     if delta_synthetic>0:
+                        #delta_synthetic = self.adjusted_penalization(n_epochs, epoch, initial_delta_synthetic, initial_delta_synthetic*10)
 
                         with torch.no_grad():  
                             synthetic_data=Utilities.generate_synthetic_tensor_categorical(inputs,100,categorical_columns,mean=0,std=std_syntethic)
@@ -403,6 +255,7 @@ class MLP_Monotonic:
                     
                     ##Evaluamos el jacobiano en puntos externos
                     if delta_external>0:
+                        #delta_external = self.adjusted_penalization(n_epochs, epoch, initial_delta_external, initial_delta_external*10)
                         # Calcular el jacobiano en puntos externos y agregar la penalización al loss
                         jacob_external = self.batch_jacobian(external_points)
                         adjusted_loss_crec_external = torch.sum(torch.relu(-jacob_external[0, :, var_mono_crec]+epsilon))
@@ -456,9 +309,11 @@ class MLP_Monotonic:
             # calculate average loss over an epoch
             train_loss = np.average(train_losses)
             train_loss_modified = np.average(train_losses_modified)
+            penalization_loss = np.average(train_losses_modified)-np.average(train_losses)
             valid_loss = np.average(valid_losses)
             avg_train_losses.append(train_loss)
             avg_train_losses_modified.append(train_loss_modified)
+            avg_penalization_losses.append(penalization_loss)
             avg_valid_losses.append(valid_loss)
 
                     
@@ -504,7 +359,7 @@ class MLP_Monotonic:
             # early_stopping needs the validation loss to check if it has decresed, 
             # and if it has, it will make a checkpoint of the current model
             if _early_stopping:
-                early_stopping(valid_loss, self._model)
+                early_stopping(valid_loss,penalization_loss, self._model)
 
                 if early_stopping.early_stop:
                     print("Early stopping at epoch %d" %(epoch))
@@ -521,6 +376,7 @@ class MLP_Monotonic:
         ## Almacenamos las curvas de entrenamiento
         self._avg_train_losses = avg_train_losses
         self._avg_train_losses_modified = avg_train_losses_modified
+        self.avg_penalization_losses = avg_penalization_losses
         self._avg_valid_losses = avg_valid_losses
 
         ## Almacenado en la propia clase

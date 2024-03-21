@@ -26,25 +26,43 @@ class EarlyStopping:
         self.delta = delta
         self.path = path
         self.trace_func = trace_func
-    def __call__(self, val_loss, model):
 
+    def __call__(self, val_loss, other_loss, model):
         score = -val_loss
+        # Negate the validation loss to convert it into a score. The higher the score, the better.
 
         if self.best_score is None:
+            # If this is the first iteration, there is no best score yet.
             self.best_score = score
-            self.save_checkpoint(val_loss, model)
-        elif score < self.best_score + self.delta:
-            self.counter += 1
-            if self.verbose>=1:
-                self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
-            if self.counter >= self.patience:
-                self.early_stop = True
-        else:
-            self.best_score = score
-            self.save_checkpoint(val_loss, model)
-            self.counter = 0
+            # So, set the current score as the best score.
+            self.save_checkpoint(val_loss, other_loss, model)
+            # And save the current model as a checkpoint.
 
-    def save_checkpoint(self, val_loss, model):
+        elif score < self.best_score + self.delta or other_loss > 0:
+            # If the current score is not significantly better than the best score (i.e., the improvement is less than delta)
+            # or if the other loss is greater than 0,
+            self.counter += 1
+            # then increment the counter that keeps track of the number of iterations without significant improvement.
+
+            if self.verbose>=1:
+                # If verbose mode is enabled,
+                self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+                # print the current state of the early stopping counter.
+
+            if self.counter >= self.patience:
+                # If the counter has reached the patience limit,
+                self.early_stop = True
+                # set the early stopping flag to True, indicating that training should be stopped.
+
+        else:
+            # If the current score is significantly better than the best score and the other loss is not greater than 0,
+            self.best_score = score
+            # update the best score to the current score,
+            self.save_checkpoint(val_loss, other_loss, model)
+            # save the current model as a checkpoint,
+            self.counter = 0
+            # and reset the counter.
+    def save_checkpoint(self, val_loss, other_loss, model):
         '''Saves model when validation loss decrease.'''
         if self.verbose == 2:
             self.trace_func(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
