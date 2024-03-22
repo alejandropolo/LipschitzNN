@@ -902,7 +902,7 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
     ## Dibujamos ahor alos puntos simulados
     if plot_symmetric_points:
         plt.plot(all_points[:, 0], all_points[:, 1], 'go')
-    plt.plot(original_points[:, 0], original_points[:, 1], 'ro', markersize=2)
+    #plt.plot(original_points[:, 0], original_points[:, 1], 'ko', markersize=2)
 
     ## Añadimos al dibujo los radios aleatorios
     for i in range(len(original_points)):
@@ -911,6 +911,10 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
         else:
             plt.gca().add_patch(Circle(original_points[i], radios[i], color='r', alpha=0.25))
 
+    mono_points = [i for i, sign in enumerate(derivative_sign) if sign == 1]
+    non_mono_points = [i for i, sign in enumerate(derivative_sign) if sign == -1]
+    plt.plot(original_points[mono_points, 0], original_points[mono_points, 1], 'bo', markersize=2,label = 'Partial Monotonic Points')
+    plt.plot(original_points[non_mono_points, 0], original_points[non_mono_points, 1], 'ro', markersize=2,label = 'Non-Monotonic Points')
     if plot_symmetric_points:
         plt.title('Voronoi Diagram with Symmetric Points')
         plt.xlim(vor.min_bound[0] - 0.2, vor.max_bound[0] + 0.2)
@@ -922,6 +926,7 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
         plt.ylim(min(y)-0.2, max(y)+0.2)
 
     plt.gca().set_aspect('equal', adjustable='box')
+    plt.legend()
     plt.show()
 
 
