@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import os
 import time
+from sklearn.metrics import r2_score
 
 def print_errors(model, X_train_tensor, y_train_tensor, X_test_tensor, y_test_tensor,lipschitz_const,log=False,config=None):
 
@@ -24,13 +25,15 @@ def print_errors(model, X_train_tensor, y_train_tensor, X_test_tensor, y_test_te
     rmse_train =  torch.sqrt(mse_train)  
     rmse_test =  torch.sqrt(mse_test)  
     mae_train =  torch.mean(torch.abs(y_train_tensor - y_train_pred))  
-    mae_test =  torch.mean(torch.abs(y_test_tensor - y_test_pred))  
+    mae_test =  torch.mean(torch.abs(y_test_tensor - y_test_pred)) 
+    r2_train = r2_score(y_train_tensor.detach().cpu().numpy(), y_train_pred.detach().cpu().numpy()) 
+    r2_test = r2_score(y_test_tensor.detach().cpu().numpy(), y_test_pred.detach().cpu().numpy())
 
     # Crea un DataFrame para almacenar los resultados
     results = pd.DataFrame(columns=["Timestamp", "Layers", "activations","Epochs",
                                     "delta",
                                     "lr","weight_decay","lipschitz_const",
-                                    "RMSE_Train", "RMSE_Test", "MAE_Train", "MAE_Test"])
+                                    "RMSE_Train", "RMSE_Test", "MAE_Train", "MAE_Test","R2_Train","R2_Test"])
 
     if log and not config is None:
         log_path = "../logs/errors_log.csv"
@@ -49,7 +52,9 @@ def print_errors(model, X_train_tensor, y_train_tensor, X_test_tensor, y_test_te
             "RMSE_Train": np.round(rmse_train.item(),6),
             "RMSE_Test": np.round(rmse_test.item(),6),
             "MAE_Train": np.round(mae_train.item(),6),
-            "MAE_Test": np.round(mae_test.item(),6)
+            "MAE_Test": np.round(mae_test.item(),6),
+            "R2_Train": np.round(r2_train,6),
+            "R2_Test": np.round(r2_test,6)
         }, index=[0])
 
         results = pd.concat([results.dropna(), new_row], ignore_index=True)
@@ -60,4 +65,5 @@ def print_errors(model, X_train_tensor, y_train_tensor, X_test_tensor, y_test_te
     print(f"MSE Train: {np.round(mse_train.item(),5)}, MSE Test: {np.round(mse_test.item(),5)}")
     print(f"RMSE Train: {np.round(rmse_train.item(),5)}, RMSE Test: {np.round(rmse_test.item(),5)}")
     print(f"MAE Train: {np.round(mae_train.item(),5)}, MAE Test: {np.round(mae_test.item(),5)}")
+    print(f"R2 Train: {np.round(r2_train,5)}, R2 Test: {np.round(r2_test,5)}")
     
