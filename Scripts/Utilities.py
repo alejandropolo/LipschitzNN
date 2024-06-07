@@ -25,33 +25,40 @@ from torch.utils.data import TensorDataset, DataLoader
 import torch.nn as nn
 from torch.autograd.functional import hessian, jacobian
 
-def print_errors(model, X_train_tensor, y_train_tensor, X_test_tensor, y_test_tensor,log=False,config=None):
+def print_errors(model, X_train_tensor, y_train_tensor, X_val_tensor, y_val_tensor, X_test_tensor, y_test_tensor,log=False,config=None):
     device = next(model.parameters()).device  # Obtiene el dispositivo del modelo
 
     # Mueve los datos a la misma GPU o CPU que el modelo
     X_train_tensor = X_train_tensor.to(device)
     X_test_tensor = X_test_tensor.to(device)
+    X_val_tensor = X_val_tensor.to(device)
     y_train_tensor = y_train_tensor.to(device)
     y_test_tensor = y_test_tensor.to(device)
+    y_val_tensor = y_val_tensor.to(device)
 
     #y_train_pred = model(X_train_tensor).detach().cpu().numpy() if device.type == 'cuda' else model(X_train_tensor).detach().numpy()
     #y_test_pred = model(X_test_tensor).detach().cpu().numpy() if device.type == 'cuda' else model(X_test_tensor).detach().numpy()
     y_train_pred = model(X_train_tensor)
     y_test_pred = model(X_test_tensor)
+    y_val_pred = model(X_val_tensor)
     mse_train = torch.mean((y_train_tensor - y_train_pred)**2)
     mse_test = torch.mean((y_test_tensor - y_test_pred)**2)
+    mse_val = torch.mean((y_val_tensor - y_val_pred)**2)
     rmse_train = torch.sqrt(mse_train)
     rmse_test = torch.sqrt(mse_test)
+    rmse_val = torch.sqrt(mse_val)
     mae_train = torch.mean(torch.abs(y_train_tensor - y_train_pred))
     mae_test = torch.mean(torch.abs(y_test_tensor - y_test_pred))
+    mae_val = torch.mean(torch.abs(y_val_tensor - y_val_pred))
     r2_train = r2_score(y_train_tensor.detach().cpu().numpy(), y_train_pred.detach().cpu().numpy())
     r2_test = r2_score(y_test_tensor.detach().cpu().numpy(), y_test_pred.detach().cpu().numpy())
+    r2_val = r2_score(y_val_tensor.detach().cpu().numpy(), y_val_pred.detach().cpu().numpy())
     
-
-    print(f"MSE Train: {np.round(mse_train.item(),7)}, MSE Test: {np.round(mse_test.item(),7)}")
-    print(f"RMSE Train: {np.round(rmse_train.item(),7)}, RMSE Test: {np.round(rmse_test.item(),7)}")
-    print(f"MAE Train: {np.round(mae_train.item(),7)}, MAE Test: {np.round(mae_test.item(),7)}")
-    print(f"R2 Train: {np.round(r2_train,7)}, R2 Test: {np.round(r2_test,7)}")
+    
+    print(f"MSE Train: {np.round(mse_train.item(),7)}, MSE Val: {np.round(mse_val.item(),7)}, MSE Test: {np.round(mse_test.item(),7)}")
+    print(f"RMSE Train: {np.round(rmse_train.item(),7)}, RMSE Val: {np.round(rmse_val.item(),7)} , RMSE Test: {np.round(rmse_test.item(),7)}")
+    print(f"MAE Train: {np.round(mae_train.item(),7)}, MAE Val: {np.round(mae_val.item(),7)}, MAE Test: {np.round(mae_test.item(),7)}")
+    print(f"R2 Train: {np.round(r2_train,7)}, R2 Val: {np.round(r2_val,7)}, R2 Test: {np.round(r2_test,7)}")
     
 
 def encontrar_indices(lista, valor):
