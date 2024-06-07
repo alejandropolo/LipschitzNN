@@ -538,7 +538,7 @@ class MonoNN:
             ),
             symbol='circle'
         ),
-            name='Prediccion',opacity = 0.5
+            name='Predicted Values',opacity = 0.5
         ))
         ## Agregar los puntos reales
         fig.add_trace(go.Scatter3d(x=X_tensor[:, n_var_1], y=X_tensor[:, n_var_2], z=y_tensor[:,0], mode='markers',
@@ -552,15 +552,15 @@ class MonoNN:
             ),
             symbol='circle'
         ),
-        name='Valores reales de entrenamiento'
+        name='True Values '
     ))
         # Personalizar la figura
         fig.update_layout(
-            title='Predicción de la superficie para el modelo MLP',
+            title='Prediction Surface',
             width=800,
             height=1000,
             legend=dict(
-                title=dict(text='Leyenda'),
+                title=dict(text='Leyend'),
                 orientation="h",
                 yanchor="bottom",
                 y=1.02,
@@ -836,7 +836,8 @@ class MonoNN:
         fig2 = go.Figure()
 
         # Agregar la superficie
-        fig2.add_trace(go.Surface(x=x1, y=x2, z=y_grid,opacity=0.5))
+        fig2.add_trace(go.Surface(x=x1, y=x2, z=y_grid,opacity=0.5,
+            showscale=False))
         # Agregar los puntos evaluados por self._model como esferas
         y_pred = self.batch_jacobian(X_tensor)
         y_pred_plot = y_pred[0,:,var_rep].reshape(X_tensor[:, n_var_1].shape).detach().numpy()
@@ -851,7 +852,7 @@ class MonoNN:
             ),
             symbol='circle'
         ),
-            name='Prediccion'
+            name='Prediction'
         ))
         # Agregar el plano en z=0
         z_plane = np.zeros_like(y_grid)  # Create a plane at z=0
@@ -859,25 +860,15 @@ class MonoNN:
     
         # Personalizar la figura
         fig2.update_layout(
-            title='Predicción de la superficie del jacobiano para el modelo MLP',
-            legend=dict(
-                title=dict(text='Leyenda'),
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="center",
-                x=0.5,
-                bgcolor="white",
-                bordercolor="Black",
-                borderwidth=2
-            ),
+            #title=r'Jacobian of the NN',
+            title=dict(text=r'$ \text{Partial Derivative of the } NN$', pad=dict(t=0)),
             scene=dict(
-                xaxis_title='x1',
-                yaxis_title='x2',
-                zaxis_title='y',
+                xaxis_title='t',
+                yaxis_title='x',
+                zaxis_title=r'z',
                 xaxis=dict(range=[x1_min, x1_max]),
                 yaxis=dict(range=[x2_min, x2_max]),
-                aspectratio=dict(x=1, y=1, z=0.5),
+                aspectratio=dict(x=1, y=1, z=1.0),
                 camera_eye=dict(x=-1.5, y=-1.5, z=0.5)
             ),
             width=1000,  # Cambia el ancho de la figura
