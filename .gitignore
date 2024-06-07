@@ -13,3 +13,4 @@
 /logs/*
 *.png
 Scripts/__pycache__/*
+Notebooks/tensor_product.ipynb
