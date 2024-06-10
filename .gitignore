@@ -16,4 +16,5 @@ Scripts/__pycache__/*
 
 ## Ignore Notebook_backup folder
 Notebook_backup/*
+Scripts_backup/*
 Notebooks/tensor_product.ipynb
