@@ -913,8 +913,8 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
 
     mono_points = [i for i, sign in enumerate(derivative_sign) if sign == 1]
     non_mono_points = [i for i, sign in enumerate(derivative_sign) if sign == -1]
-    plt.plot(original_points[mono_points, 0], original_points[mono_points, 1], 'bo', markersize=2,label = 'Partial Monotonic Points')
-    plt.plot(original_points[non_mono_points, 0], original_points[non_mono_points, 1], 'ro', markersize=2,label = 'Non-Monotonic Points')
+    plt.plot(original_points[mono_points, 0], original_points[mono_points, 1], 'b.', markersize=8,label = 'Partial Monotonic Points')
+    plt.plot(original_points[non_mono_points, 0], original_points[non_mono_points, 1], 'ro', markersize=8,label = 'Non-Monotonic Points')
     if plot_symmetric_points:
         plt.title('Voronoi Diagram with Symmetric Points')
         plt.xlim(vor.min_bound[0] - 0.2, vor.max_bound[0] + 0.2)
@@ -926,7 +926,7 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
         plt.ylim(min(y)-0.2, max(y)+0.2)
 
     plt.gca().set_aspect('equal', adjustable='box')
-    plt.legend()
+    plt.legend(prop={'size': 12})
     plt.show()
 
 
