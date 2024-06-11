@@ -80,10 +80,10 @@ def extract_hypercube_faces(vertices,limits):
 ############################### EXTRACTION OF NORMAL VECTOR OF A HYPERPLANE
 
 """ 
-Justificación del método:
-P1) Se substrae el centroide para generar vectores que deben formar parte del plano https://math.stackexchange.com/questions/3501135/fitting-a-plane-to-points-using-svd
-P2) A partir de la matriz de vectores, se usa la descomposición en valores singulares (SVD) para obtener los vectores del kernel
-P3) Como se trata de un hiperplano, solo hay un vector en el kernel que esta dado por la última columna de la matriz vh
+Justification of the method:
+P1) The centroid is subtracted to generate vectors that should be part of the plane https://math.stackexchange.com/questions/3501135/fitting-a-plane-to-points-using-svd.
+P2) From the vector matrix, singular value decomposition (SVD) is used to obtain the kernel vectors.
+P3) Since it is a hyperplane, there is only one vector in the kernel which is given by the last column of the matrix vh
 https://math.stackexchange.com/questions/3359693/what-is-the-true-meaning-of-using-svd-in-finding-null-space
 https://math.stackexchange.com/questions/1657447/null-space-for-mathcalna-given-svd-of-a
 https://math.stackexchange.com/questions/2723294/how-to-determine-the-equation-of-the-hyperplane-that-contains-several-points
@@ -110,14 +110,11 @@ def get_normal_vector(hyperplane_points, centroid_hypercube):
     _, _, vh = np.linalg.svd(hyperplane_points - centroid, full_matrices=True)
     normal_vector = vh[-1]
     
-    # Vector desde el centroide del hipercubo a un punto en la cara
-    point_on_face = hyperplane_points[0]  # Elige un punto en la cara
+    point_on_face = hyperplane_points[0]  
     vector_to_face = point_on_face - centroid_hypercube
     
-    # Producto escalar para verificar la orientación
     dot_product = np.dot(normal_vector, vector_to_face)
 
-    # Si el producto escalar es negativo, invierte el vector normal
     if dot_product < 0:
         normal_vector = -normal_vector
     
@@ -347,7 +344,7 @@ def check_space_filled(vor,dict_radios,vertices):
             distance = np.linalg.norm(point-furthest_vertex)
             distances['{}'.format(point)] = distance
     ## Check if the space is filled
-    if np.all(np.array(np.array(list(distances.values())))<=radius):
+    if np.all(np.array(np.array(list(distances.values())))<radius):
         return True ,distances
     else:
         return False ,distances
@@ -377,7 +374,7 @@ def check_space_filled_vectorized(vor, dict_radios, vertices):
 
     distances_array = np.array(distances)
 
-    if np.all(distances_array <= radius):
+    if np.all(distances_array < radius):
         return True, distances_array
     else:
         return False, distances_array
@@ -407,11 +404,7 @@ def points_inside_hypercube(points, vertices):
 ############################### GET HESSIAN BOUND
 
 def hessian_bound(W,actfunc,partial_monotonic_variable,n_variables):
-    """_summary_
-    La idea es generar un algoritmo recursivo de modo que si la red neuronal tiene k capas, entonces se comience calculando el hessiano acotado
-    H_0_1, luego el hessiano acotado H_0_2, y así sucesivamente hasta llegar a H_0_k.
-    Args:
-        W (_type_): list of numpy arrays with the weights (W[i][1:,:]) and the biases (W[i][0,:]) of the network
+    """
     """
     ## In case there are multiple partial monotonic variables
     hessian_bounds = []
@@ -806,7 +799,6 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios
         ## Add the new point to the Voronoi diagram
         original_vor.add_points(selected_vertex.reshape(1, -1))
         ## Compute the new finite Voronoi diagram with the new point
-        ##MODIFICACIÓN PARA NO TENER QUE RECALCULAR EL VORONOI
         all_points, _ = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
         finite_vor = Voronoi(all_points, incremental=True)
         
@@ -899,7 +891,7 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
     x,y = boundary_polygon.exterior.xy
     #plt.plot(x, y, 'b-', label='Square')
     # Plot original points
-    ## Dibujamos ahor alos puntos simulados
+    ##
     if plot_symmetric_points:
         plt.plot(all_points[:, 0], all_points[:, 1], 'go')
     #plt.plot(original_points[:, 0], original_points[:, 1], 'ko', markersize=2)
