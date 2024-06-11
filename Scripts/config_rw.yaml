@@ -28,7 +28,7 @@ training:
   - 1
   - 1
   n_epochs: 5000
-  patience: 100
+  patience: 1000
   plot_history: True
   save_model: false
   early_stopping: True
