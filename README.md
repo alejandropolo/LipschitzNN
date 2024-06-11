@@ -17,8 +17,8 @@ Scripts/: Contains scripts with the core code used in the paper, including the i
 ## Getting Started
 To use the LipVor algorithm, follow these steps:
 
-Clone this repository: git clone https://github.com/alejandropolo/LipschitzNN.git
-Install the required dependencies: pip install -r requirements.txt
-Prepare the dataset by placing the necessary files in the data/ directory.
-Run the case study notebooks
-Feel free to explore the code and customize it according to your specific requirements.
+1. Clone this repository: git clone https://github.com/alejandropolo/LipschitzNN.git
+2. Install the required dependencies: pip install -r requirements.txt
+3. Prepare the dataset by placing the necessary files in the data/ directory.
+4. Run the case study notebooks
+5. Feel free to explore the code and customize it according to your specific requirements.
