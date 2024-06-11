@@ -8,9 +8,8 @@ from sklearn.metrics import r2_score
 
 def print_errors(model, X_train_tensor, y_train_tensor, X_val_tensor, y_val_tensor, X_test_tensor, y_test_tensor,lipschitz_const,log=False,config=None):
 
-    device = next(model.parameters()).device  # Obtiene el dispositivo del modelo
+    device = next(model.parameters()).device 
 
-    # Mueve los datos a la misma GPU o CPU que el modelo
     X_train_tensor = X_train_tensor.to(device)
     X_test_tensor = X_test_tensor.to(device)
     X_val_tensor = X_val_tensor.to(device)
@@ -19,8 +18,6 @@ def print_errors(model, X_train_tensor, y_train_tensor, X_val_tensor, y_val_tens
     y_val_tensor = y_val_tensor.to(device)
 
 
-    #y_train_pred = model(X_train_tensor).detach().cpu().numpy() if device.type == 'cuda' else model(X_train_tensor).detach().numpy()
-    #y_test_pred = model(X_test_tensor).detach().cpu().numpy() if device.type == 'cuda' else model(X_test_tensor).detach().numpy()
     y_train_pred = model(X_train_tensor)
     y_test_pred = model(X_test_tensor)
     y_val_pred = model(X_val_tensor)
@@ -37,7 +34,6 @@ def print_errors(model, X_train_tensor, y_train_tensor, X_val_tensor, y_val_tens
     r2_test = r2_score(y_test_tensor.detach().cpu().numpy(), y_test_pred.detach().cpu().numpy())
     r2_val = r2_score(y_val_tensor.detach().cpu().numpy(), y_val_pred.detach().cpu().numpy())
 
-    # Crea un DataFrame para almacenar los resultados
     results = pd.DataFrame(columns=["Timestamp", "Layers", "activations","Epochs",
                                     "delta",
                                     "lr","weight_decay","lipschitz_const",
@@ -47,7 +43,6 @@ def print_errors(model, X_train_tensor, y_train_tensor, X_val_tensor, y_val_tens
         log_path = "../logs/errors_log.csv"
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
-        # Agrega los resultados a la tabla (DataFrame)
         new_row = pd.DataFrame({
             "Timestamp": time.time(),
             "Layers": str(list(config['model_architecture']['layers'])),
@@ -70,7 +65,6 @@ def print_errors(model, X_train_tensor, y_train_tensor, X_val_tensor, y_val_tens
 
         results = pd.concat([results.dropna(), new_row], ignore_index=True)
 
-        # Guarda la tabla en un archivo CSV
         results.to_csv(log_path, mode='a', header=not os.path.exists(log_path), index=False)
 
     print(f"MSE Train: {np.round(mse_train.item(),5)}, MSE Val: {np.round(mse_val.item(),5)}, MSE Test: {np.round(mse_test.item(),5)}")

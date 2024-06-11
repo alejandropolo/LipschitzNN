@@ -18,12 +18,10 @@ def data_load_lipschitz(config,f_output):
     np.random.seed(0)
 
     noise = np.random.normal(0,config['data_load']['noise_constant'],config['data_load']['n_samples'])
-    # Crear una cuadrícula de valores que serviran como datos de train
     n_samples = 50
     x1_values = np.linspace(config['data_load']['x_lim'][0], config['data_load']['x_lim'][1], config['data_load']['n_samples'])
     x2_values = np.linspace(config['data_load']['y_lim'][0], config['data_load']['y_lim'][1], config['data_load']['n_samples'])
     x1_mesh, x2_mesh = np.meshgrid(x1_values, x2_values)
-    ## Juntamos y convertimos a tensor
     mesh = np.hstack((x1_mesh.reshape(-1,1),x2_mesh.reshape(-1,1)))
     noise_matr=np.random.multivariate_normal(mean=[0,0], cov=[[0, 0], [0,0]], size=len(mesh))
     mesh = mesh+noise_matr
@@ -31,7 +29,6 @@ def data_load_lipschitz(config,f_output):
     noise = np.random.normal(0,config['data_load']['noise_constant'],len(mesh))
 
 
-    ## Convertimos los datos a un dataset para pytorch
     y=torch.tensor(f_output(mesh[:,0],mesh[:,1],noise)).reshape(len(mesh),1).float()
 
     ## Min max scaler to the output
