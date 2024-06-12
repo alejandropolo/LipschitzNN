@@ -1,5 +1,6 @@
 ############## DEPENDENCIES ##############
 import numpy as np
+import ast
 import itertools
 import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d
@@ -7,8 +8,11 @@ from shapely.geometry import Polygon, Point
 from matplotlib.patches import Circle
 import plotly.graph_objects as go
 import torch
+from tqdm import tqdm
 from neuralsens import partial_derivatives as ns
 from neuralsens.partial_derivatives import calculate_second_partial_derivatives_mlp,calculate_first_partial_derivatives_mlp
+from scipy.spatial import ConvexHull
+
 ###############################################################################################
 ########################################## FUNCTIONS ##########################################
 ###############################################################################################
@@ -76,10 +80,10 @@ def extract_hypercube_faces(vertices,limits):
 ############################### EXTRACTION OF NORMAL VECTOR OF A HYPERPLANE
 
 """ 
-Justificación del método:
-P1) Se substrae el centroide para generar vectores que deben formar parte del plano https://math.stackexchange.com/questions/3501135/fitting-a-plane-to-points-using-svd
-P2) A partir de la matriz de vectores, se usa la descomposición en valores singulares (SVD) para obtener los vectores del kernel
-P3) Como se trata de un hiperplano, solo hay un vector en el kernel que esta dado por la última columna de la matriz vh
+Justification of the method:
+P1) The centroid is subtracted to generate vectors that should be part of the plane https://math.stackexchange.com/questions/3501135/fitting-a-plane-to-points-using-svd.
+P2) From the vector matrix, singular value decomposition (SVD) is used to obtain the kernel vectors.
+P3) Since it is a hyperplane, there is only one vector in the kernel which is given by the last column of the matrix vh
 https://math.stackexchange.com/questions/3359693/what-is-the-true-meaning-of-using-svd-in-finding-null-space
 https://math.stackexchange.com/questions/1657447/null-space-for-mathcalna-given-svd-of-a
 https://math.stackexchange.com/questions/2723294/how-to-determine-the-equation-of-the-hyperplane-that-contains-several-points
@@ -106,14 +110,11 @@ def get_normal_vector(hyperplane_points, centroid_hypercube):
     _, _, vh = np.linalg.svd(hyperplane_points - centroid, full_matrices=True)
     normal_vector = vh[-1]
     
-    # Vector desde el centroide del hipercubo a un punto en la cara
-    point_on_face = hyperplane_points[0]  # Elige un punto en la cara
+    point_on_face = hyperplane_points[0]  
     vector_to_face = point_on_face - centroid_hypercube
     
-    # Producto escalar para verificar la orientación
     dot_product = np.dot(normal_vector, vector_to_face)
 
-    # Si el producto escalar es negativo, invierte el vector normal
     if dot_product < 0:
         normal_vector = -normal_vector
     
@@ -238,7 +239,60 @@ def proyection_hypercube(point, hypercube):
 
         # Return the projected point as a numpy array
         return np.array(projected_point)
+    
+def proyection_hypercube_vectorized(points, hypercube):
+    """
+    Given an array of points and a hypercube, returns the projection of each point onto the hypercube.
 
+    Args:
+        points (numpy.ndarray): The points to be projected. Each row represents a point.
+        hypercube (numpy.ndarray): The hypercube defined by its vertices.
+
+    Returns:
+        numpy.ndarray: The projected points. Each row represents a projected point.
+
+    Example of use:
+    n = 3  # Number of variables
+    intervals = [(0, 1), (0, 2), (0, 0.5)]  # Example intervals for each variable
+
+    vertices = utilities_voronoi.generate_hypercube_vertices(intervals)
+    points = np.array([[1.1,2.5,0.2], [0.5, 2.5, 0.1]]) 
+    proyection_hypercube(points,vertices) -> array([[1,2.0,0.2], [0.5, 2.0, 0.1]])
+    """
+    # Extract the minimum and maximum coordinates of the hypercube
+    min_coords = hypercube.min(axis=0)
+    max_coords = hypercube.max(axis=0)
+
+    # Initialize an empty list to store the projected points
+    projected_points = []
+
+    # Iterate over each point
+    for point in points:
+        # Check if the point is inside the hypercube
+        if is_inside_hypercube(point, hypercube):
+            # If the point is inside the hypercube, append it as is
+            projected_points.append(point)
+        else:
+            # If the point is outside the hypercube, project it onto the hypercube
+            # The projection consists of reducing the coordinates that are outside the hypercube
+            # to the minimum or maximum values of the hypercube
+
+            # Iterate over each coordinate of the point
+            projected_point = []
+            for i in range(len(point)):
+                # Check if the coordinate is within the hypercube
+                if point[i] < min_coords[i]:
+                    projected_point.append(min_coords[i])
+                elif point[i] > max_coords[i]:
+                    projected_point.append(max_coords[i])
+                else:
+                    projected_point.append(point[i])
+
+            # Append the projected point to the list of projected points
+            projected_points.append(projected_point)
+
+    # Return the projected points as a numpy array
+    return np.array(projected_points)
 ############################### ADD SYMMETRIC POINTS
 
 def add_symmetric_points(vor,vertices,intervals):
@@ -266,11 +320,15 @@ def add_symmetric_points(vor,vertices,intervals):
 
     ## Combine original and symmetric points
     all_points = np.vstack((vor.points, np.array(symmetric_points_list).reshape(-1, vertices.shape[1]))) ### GENERALIZAR PARA N DMIENSIONES
-    return all_points
+    return all_points, np.array(symmetric_points_list).reshape(-1, vertices.shape[1])
 
 ############################### CHECK IF THE SPACE IS FILLED
 
-def check_space_filled(vor,radius,vertices): 
+def check_space_filled(vor,dict_radios,vertices): 
+    ################################ AÑADIR LA MISMA MODIFICACION QUE EN EL CASO VECTORIZED
+    ## Extract radius value
+    radius = np.array(list(dict_radios.values()))[:,0]
+    ## Initialize distances dictionary
     distances = dict()
     # Find furthest vertices for each point
     for i,point in enumerate(vor.points):
@@ -286,11 +344,46 @@ def check_space_filled(vor,radius,vertices):
             distance = np.linalg.norm(point-furthest_vertex)
             distances['{}'.format(point)] = distance
     ## Check if the space is filled
-    if np.all(np.array(np.array(list(distances.values())))<=radius):
+    if np.all(np.array(np.array(list(distances.values())))<radius):
         return True ,distances
     else:
         return False ,distances
+
+
+def check_space_filled_vectorized(vor, dict_radios, vertices):
+    distances = []
+    ## Extract radius value
+    radius = np.array(list(dict_radios.values()))[:,0]
     
+    ## Initialize the counter
+    j = 0
+    for i, point in enumerate(vor.points):
+        region_idx = vor.point_region[i]
+        if is_inside_hypercube(point, vertices):
+            ## Check that the distance is goint to be calculated for the correct point
+            point_radio = np.array(ast.literal_eval(list(dict_radios.keys())[j]), dtype=np.float32)
+            if not np.allclose(point, point_radio, atol=1e-8):
+                print('Point from voronoi set: ', point)
+                print('Point from dict_radios: ', point_radio)
+                raise ValueError('The points are not the same, and therefore the radio is not the correct one')
+            region_vertices = vor.vertices[vor.regions[region_idx]]
+            furthest_vertex = region_vertices[np.argmax(np.linalg.norm(region_vertices - point, axis=1))]
+            distance = np.linalg.norm(point - furthest_vertex)
+            distances.append(distance)
+            j += 1
+
+    distances_array = np.array(distances)
+
+    if np.all(distances_array < radius):
+        return True, distances_array
+    else:
+        return False, distances_array
+
+
+def compute_polytope_volume(vertices):
+    hull = ConvexHull(vertices)
+    return hull.volume
+
 ############################### CHECK IF A POINT IS INSIDE A HYPERCUBE
     
 def points_inside_hypercube(points, vertices):
@@ -311,42 +404,110 @@ def points_inside_hypercube(points, vertices):
 ############################### GET HESSIAN BOUND
 
 def hessian_bound(W,actfunc,partial_monotonic_variable,n_variables):
-    """_summary_
-    La idea es generar un algoritmo recursivo de modo que si la red neuronal tiene k capas, entonces se comience calculando el hessiano acotado
-    H_0_1, luego el hessiano acotado H_0_2, y así sucesivamente hasta llegar a H_0_k.
-    Args:
-        W (_type_): list of numpy arrays with the weights (W[i][1:,:]) and the biases (W[i][0,:]) of the network
     """
-    hessian_boud =[]
-    ## First compute H_0^1
-    ## Remember that ||H_0_1|| <= max|a_k_1|*||W_1_1||*||W_1|| 
-    # where W_1_1 is the first row of the first layer of weights and a_k_1 is the maximum possible value of the second derivative of the activation function of the first layer
-    input_vector = [0] * n_variables
-    input_vector[partial_monotonic_variable] = 1
-    if actfunc[1]=='sigmoid':
-        a_1 = 0.25
-    else:
-        a_1 = 1
-    ## W_1j^1 * W_1
-    weights_multiplication = np.linalg.norm(input_vector @ W[1][1:, :], ord=2) * np.linalg.norm(W[1][1:, :], ord=2)
-    H_0_1 = a_1*weights_multiplication
-    hessian_boud.append(H_0_1)
-    
-    ## In general, H_0_k can be bounded following the next equation
-    # H_0_k <= max|a_k|*||W_1_1||*||W_1||*(||W_2||^2)*...*(||W_{k+1}||^2) + H_0_{k-1}*||W_k||
-    for k in range(2,len(actfunc)):
-        if actfunc[k]=='sigmoid':
-            a_k = 0.25
-        elif actfunc[k]=='identity': #### HAY QUE REVISAR QUE ESTA CONDICIÓN ESTÉ CORRECTA
-            a_k = 0
-        weights_multiplication = weights_multiplication * np.linalg.norm(W[k][1:, :], ord=2)**2
-        H_0_k = a_k*weights_multiplication + hessian_boud[-1]*np.linalg.norm(W[k][1:, :], ord=2)
-        hessian_boud.append(H_0_k)
-    return hessian_boud[-1]
+    """
+    ## In case there are multiple partial monotonic variables
+    hessian_bounds = []
+    for var in partial_monotonic_variable: 
+        hessian_boud =[]
+        ## First compute H_0^1
+        ## Remember that ||H_0_1|| <= max|a_k_1|*||W_1_1||*||W_1|| 
+        # where W_1_1 is the first row of the first layer of weights and a_k_1 is the maximum possible value of the second derivative of the activation function of the first layer
+        
+        ## Generate the vector (0,...,1(i),...,0)
+        input_vector = [0] * n_variables
+        input_vector[var] = 1
+
+        if actfunc[1]=='sigmoid':
+            a_1 = 0.25
+        else:
+            a_1 = 1
+        ## W_1j^1 * W_1
+        weights_multiplication = np.linalg.norm(input_vector @ W[1][1:, :], ord=2) * np.linalg.norm(W[1][1:, :], ord=2)
+        H_0_1 = a_1*weights_multiplication
+        hessian_boud.append(H_0_1)
+        
+        ## In general, H_0_k can be bounded following the next equation
+        # H_0_k <= max|a_k|*||W_1_1||*||W_1||*(||W_2||^2)*...*(||W_{k+1}||^2) + H_0_{k-1}*||W_k||
+        for k in range(2,len(actfunc)):
+            if actfunc[k]=='sigmoid':
+                a_k = 0.25
+            elif actfunc[k]=='identity': 
+                a_k = 0
+            else:
+                a_k = 1
+            weights_multiplication = weights_multiplication * np.linalg.norm(W[k][1:, :], ord=2)**2
+            H_0_k = a_k*weights_multiplication + hessian_boud[-1]*np.linalg.norm(W[k][1:, :], ord=2)
+            hessian_boud.append(H_0_k)
+        ## Return the last element of the list
+        hessian_bounds.append(hessian_boud[-1])
+    return max(hessian_bounds)
+
+def get_weights_and_biases(model):
+    """
+    Retrieves the weights and biases from a PyTorch model.
+
+    This function extracts the weights and biases from the layers of a PyTorch model.
+    The weights and biases are extracted from the model's state dictionary and returned in two separate lists.
+
+    Parameters:
+    model (torch.nn.Module): The PyTorch model from which to extract weights and biases.
+
+    Returns:
+    tuple: A tuple containing two lists. The first list contains the weights from each layer of the model,
+           and the second list contains the biases from each layer of the model.
+
+    Example:
+    >>> model = torch.nn.Linear(2, 3)
+    >>> weights, biases = get_weights_and_biases(model)
+    >>> print(weights)
+    [tensor([[ 0.3643, -0.3121],
+             [-0.1371,  0.3319],
+             [-0.6657,  0.4241]])]
+    >>> print(biases)
+    [tensor([0.0925, 0.2071, 0.2133])]
+    """
+    parameters = dict(model.state_dict())
+    weights = []
+    biases = []
+    for key, value in parameters.items():
+        if 'weight' in key:
+            weights.append(value.T)
+        elif 'bias' in key:
+            biases.append(value)
+    return weights, biases
 
 ############################### GET LIPSCHITZ RADIUS
+
 def get_lipschitz_radius(inputs,model,global_lipschitz_constant,monotone_relation,variable_index,n_variables):
+    """
+    DEPRECATED
+    Calculates the radius where the monotonicity is enforced for a given set of inputs and a neural network model.
+
+    Parameters:
+    inputs (list): List of input tensors.
+    model (torch.nn.Module): Neural network model.
+    global_lipschitz_constant (torch.Tensor): Global Lipschitz constant.
+    monotone_relation (int): Monotone relation indicator. 1 for positive monotone relation, -1 for negative monotone relation.
+    variable_index (int): Index of the variable to consider for the monotone relation and therefore for the Lipschitz radius calculation.
+    n_variables (int): Number of variables in the input tensors.
+
+    Returns:
+    radius_tot (list): List of Lipschitz radii for each input.
+    dict_radios (dict): Dictionary mapping input coordinates to their corresponding Lipschitz radii and relation indicators.
+    x_reentrenamiento (torch.Tensor): Tensor containing the inputs that do not satisfy the monotone relation.
+
+    Note:
+    - The Lipschitz radius is calculated as the ratio between the derivative and the global Lipschitz constant.
+    - The monotone relation determines whether the derivative should be positive or negative for the given variable.
+    - The function currently only supports the same monotone relation for every variable
+    """
     #################################################### AMPLIAR EL CÓDIGO PARA QUE PERMITA MULTIPLES MONOTONE RELATIONS
+    """Idea para que admita relaciones monótonas crecientes y decrecientes.
+    1) Se calcula el radio para cada variable
+    2) Si se cumple la relación monótona (ya sea creciente o decreciente) para todas las variables, se toma el mínimo de los radios (Buscamos el espacio  en el que se cumplen todas las condiciones)
+    3) Si no se cumple la relación monótona para alguna variable, se toma el máximo de los radios (Buscamos el espacio máximo en el que alguna de las condiciones falla)
+    """
     ## Comenzamos definiendo las variables que luego iremos rellenando
     radius_tot = []
     dict_radios = {}
@@ -375,118 +536,197 @@ def get_lipschitz_radius(inputs,model,global_lipschitz_constant,monotone_relatio
                 ## El radio es 0
                 r = 0
                 radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
+                #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
+                dict_radios[repr(list(input.detach().numpy()))] = [r,0]
             ## Se comprueba si la derivada es mayor que 0 en todas las variables consideradas o en alguna de ellas es menor que 0
+            ## Para ello se usa la función torch.relu que devuelve 0 si el valor es negativo y el valor si es positivo
             elif torch.sum(torch.relu(-derivative))>0:
                 ## Añadimos el punto al conjunto de reentrenamiento
                 x_reentrenamiento = torch.cat((x_reentrenamiento,input.reshape(-1,n_variables)),dim=0)
-                ## Calculamos el radio como el minimo de las componentes negativas de la derivada (en valor absoluto -> Por eso tomamos el mínimo de la -derivative)
+                ## Calculamos el radio como el máximos de las componentes negativas de la derivada (en valor absoluto -> Por eso tomamos la -derivative)
                 ## Extraigo solo la parte de la derivada que no cumple la relacion
-                derivative_pos = torch.relu(-derivative)
-                ## Extraigo el maximo de la derivada que no cumple la relacion (Sin contar con aquellos que son 0 que son las posiciones en las que si que se cumple la relacion)
-                min_der = torch.max(derivative_pos[derivative_pos!=0]).item()
+                derivative_neg = torch.relu(-derivative)
+                ## Extraigo el maximo de la derivada que no cumple la relacion (Si no se cumple para una variable la relación da igual que para otra si que se cumpla)
+                max_der = torch.max(derivative_neg).item()
                 ## Divido entre la constante de lipschitz para obtener el radio 
-                r = min_der/global_lipschitz_constant.item()
+                r = max_der/global_lipschitz_constant.item()
                 radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1]
-            
+                #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1]
+                dict_radios[repr(list(input.detach().numpy()))] = [r,-1]
             ## En caso de que sea positivo para todas las variables
             else:
                 ## Extraigo el mínimo de la derivada que cumple la relación
-                # Tomo el mínimo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r
-                min_der = torch.min(derivative).item() 
+                # Tomo el mínimo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r 
                 r = torch.min(derivative).item()/global_lipschitz_constant.item()
                 radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,1]
-        else:
-            print('Por ahora el código solo esta preparado para relaciones monótonas crecientes')
-    return radius_tot,dict_radios,x_reentrenamiento
-
-def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global_lipschitz_constant,monotone_relation,variable_index,n_variables):
-    #################################################### AMPLIAR EL CÓDIGO PARA QUE PERMITA MULTIPLES MONOTONE RELATIONS
-    ## Comenzamos definiendo las variables que luego iremos rellenando
-    radius_tot = []
-    dict_radios = {}
-    x_reentrenamiento = torch.tensor([]).reshape(-1,n_variables)
-
-    ## Para cada input, calculamos el radio como el cociente entre la derivada y la constante de lipschitz
-    ## Calculamos todas las derivadas
-    _, _, _, _, D_accum, _, _ = calculate_first_partial_derivatives_mlp(weights, biases, actfunc, inputs, outputs,sens_end_layer=len(actfunc))
-    ## Tomamos la derivada de la salida con respecto al input
-    derivatives = D_accum[-1]
-    for i,der in enumerate(derivatives):
-        x = inputs[i]
-        derivative = torch.tensor(der.flatten()).float()[variable_index]
-        ## Compruebo si la derivada cuadra con la monotone relation (if monotone_relation 1, derivative must be positive) else (derivative must be negative))
-        if monotone_relation == 1:
+                #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,1]
+                dict_radios[repr(list(input.detach().numpy()))] = [r,1]
+        elif monotone_relation == -1:
             ## Si alguno de los valores de las derivadas de las variables analizadas no cumple la relacion se añade al conjunto de reentrenamiento
             ## Chequeamos ahora si la derivada es 0 alguna de las variables consideradas
             if (derivative == 0).any():
                 ## Añadimos el punto al conjunto de reentrenamiento
-                x_reentrenamiento = torch.cat((x_reentrenamiento,inputs),dim=0)
+                x_reentrenamiento = torch.cat((x_reentrenamiento,input.reshape(-1,n_variables)),dim=0)
                 ## El radio es 0
                 r = 0
                 radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
-            ## Se comprueba si la derivada es mayor que 0 en todas las variables consideradas o en alguna de ellas es menor que 0
-            elif torch.sum(torch.relu(-derivative))>0:
+                #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,0]
+                dict_radios[repr(list(input.detach().numpy()))] = [r,0]
+            ## Se comprueba si la derivada es menor que 0 en todas las variables consideradas o en alguna de ellas es mayor que 0
+            elif torch.sum(torch.relu(derivative))>0:
                 ## Añadimos el punto al conjunto de reentrenamiento
-                x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
-                ## Calculamos el radio como el minimo de las componentes negativas de la derivada (en valor absoluto -> Por eso tomamos el mínimo de la -derivative)
+                x_reentrenamiento = torch.cat((x_reentrenamiento,input.reshape(-1,n_variables)),dim=0)
+                ## Calculamos el radio como el máximo de las componentes positivas de la derivada (el mayor espacio en el que no se cumple alguna condicion)
                 ## Extraigo solo la parte de la derivada que no cumple la relacion
-                derivative_pos = torch.relu(-derivative)
-                ########################################### TOMAR EL MAXIMO (NO EL MINIMO) DE LA DERIVADA NEGATIVA
-                ## Extraigo el minimo de la derivada que no cumple la relacion (Sin contar con aquellos que son 0 que son las posiciones en las que si que se cumple la relacion)
-                min_der = torch.max(derivative_pos[derivative_pos!=0]).item()
+                derivative_pos = torch.relu(derivative)
+                ## Extraigo el maximo de la derivada que no cumple la relacion
+                max_der = torch.max(derivative_pos).item()
                 ## Divido entre la constante de lipschitz para obtener el radio 
-                r = min_der/global_lipschitz_constant.item()
+                r = max_der/global_lipschitz_constant.item()
                 radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1]
+                #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,1]
+                dict_radios[repr(list(input.detach().numpy()))] = [r,1]
             
-            ## En caso de que sea positivo para todas las variables
+            ## En caso de que sea negativo para todas las variables
             else:
-                ## Extraigo el mínimo de la derivada que cumple la relación
-                # Tomo el mínimo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r
-                min_der = torch.min(derivative).item() 
-                r = torch.min(derivative).item()/global_lipschitz_constant.item()
+                ## Extraigo el mínimo de los valores para los que se cumplen la relación
+                # Tomo el máximo porque voy a construir bolas cerradas en las que se cumple la relación y si se cumple para un r, en particular se cumple para todo r'<r 
+                r = torch.min(-derivative).item()/global_lipschitz_constant.item()
                 radius_tot.append(r)
-                dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,1]
+                #dict_radios['({},{})'.format(x.detach().numpy()[0],x.detach().numpy()[1])] = [r,-1]
+                dict_radios[repr(list(input.detach().numpy()))] = [r,-1]
         else:
             print('Por ahora el código solo esta preparado para relaciones monótonas crecientes')
     return radius_tot,dict_radios,x_reentrenamiento
 
+def get_lipschitz_radius_neuralsens(inputs,outputs,weights,biases,actfunc,global_lipschitz_constant,monotone_relation,variable_index,n_variables, epsilon_derivative):
+    radius_tot = []
+    dict_radios = {}
+    x_reentrenamiento = torch.tensor([]).reshape(-1,n_variables)
+    ## Asser that the length of monotonous_relation is the same as the number of variables and the legnth of variable_index
+    assert len(monotone_relation) == len(variable_index), "The length of the monotone relation and the variable index must be the same"
+    ## Check if monotone_relation is a tensor
+    if not isinstance(monotone_relation,torch.Tensor):
+        monotone_relation = torch.tensor(monotone_relation).float()
+    
+
+    _, _, _, _, D_accum, _, _ = calculate_first_partial_derivatives_mlp(weights, biases, actfunc, inputs, outputs,sens_end_layer=len(actfunc))
+    derivatives = D_accum[-1]
+    no_points = True
+    for i,der in enumerate(derivatives):
+        x = inputs[i]
+        derivative = torch.tensor(der.flatten()).float()[variable_index]
+        if (derivative == 0).any():
+            x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
+            r = 0
+            radius_tot.append(r)
+            dict_radios[repr(list(x.detach().numpy()))] = [r,0]
+        elif torch.sum(torch.relu(-monotone_relation*derivative))>0:
+            no_points = False ## There is at least one point not satisfying the monotone relation
+            x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
+            derivative_neg = torch.relu(-monotone_relation*derivative)
+            max_der = torch.max(derivative_neg).item()
+            r = max_der/global_lipschitz_constant.item()
+            radius_tot.append(r)
+            dict_radios[repr(list(x.detach().numpy()))] = [r,-1]
+        else:
+            r = torch.min(monotone_relation*derivative).item()/global_lipschitz_constant.item()
+            radius_tot.append(r)
+            dict_radios[repr(list(x.detach().numpy()))] = [r,1]
+
+    ## When no_points is True it means that there are no points not satisfying the monotone relation
+    if no_points:
+        for i,der in enumerate(derivatives):
+            x = inputs[i]
+            derivative = torch.tensor(der.flatten()).float()[variable_index]
+            if not (derivative == 0).any() and not torch.sum(torch.relu(-monotone_relation*derivative))>0:
+                if torch.min(monotone_relation*derivative).item() < epsilon_derivative:
+                    x_reentrenamiento = torch.cat((x_reentrenamiento,x.reshape(-1,n_variables)),dim=0)
+
+    return radius_tot,dict_radios,x_reentrenamiento,no_points
+
 ############################### ADD POINTS TO THE VORONOI DIAGRAM
-def add_new_point(finite_vor, vertices, distances, radios):
-    np.random.seed(seed=0)
-    min_covered_points = float('inf') ## Es una forma de asegurarnos
-    selected_vertex = None
+def add_new_point_vectorized(finite_vor, vertices, distances, dict_radios, probability):
+    min_covered_points = float('inf')
+    max_radio = float('-inf')
+    min_radio = float('inf')
+    selected_vertex_max = None
+    selected_vertex_min = None
+    vertex_covered_count = 0  # Initialize the counter
+    volume_covered = 0  # Initialize the volume of the polytope
 
-    ## First get point inside the voronoi set
+    ## Extract radios values
+    radios = np.array(list(dict_radios.values()))[:,0] ## The second column is the relation indicator
+
     points = finite_vor.points
-    point_inside,indices_inside = points_inside_hypercube(points, vertices)
+    point_inside, indices_inside = points_inside_hypercube(points, vertices)
 
-    ## Check that the number of points inside is the same as the distances and the radios
-    assert len(indices_inside)==len(distances)==len(radios),  "The number of points inside the voronoi set is not the same as the distances and the radios"
-     
-    for i, distance in enumerate(distances.values()):
+    assert len(indices_inside) == len(distances) == len(radios), "The number of points inside the voronoi set is not the same as the distances and the radios"
+    ## Check that not all the radios are greater than the distances
+    assert not np.all(radios >= distances), "The Voronoi cell is already filled"
+
+    ## Loop over the distances and the radios
+    for i, distance in enumerate(distances):
+        ## Check if the distance is greater than the radio (If not the Voronoi cell is already filled)
         if distance > radios[i]:
+            ## Extract the point and the region index
             point = finite_vor.points[indices_inside[i]]
-            ## Extract the region index for the point i
+            ## Check that the radio matches the point
+            point_radio = np.array(ast.literal_eval(list(dict_radios.keys())[i]),dtype=np.float32)
+            assert np.allclose(point, point_radio, atol=1e-8), "The points are not the same, and therefore the radio is not the correct one"
+            
+            ## Extract the region index and vertices for the point i
             region_idx = finite_vor.point_region[indices_inside[i]]
-            ## Extract the vertices of the region
             region_vertices = finite_vor.vertices[finite_vor.regions[region_idx]]
+            
             ## Extract the furthest vertex
             furthest_vertex = region_vertices[np.argmax(np.linalg.norm(region_vertices - point, axis=1))]
-            # Check how many original points are covered by this vertex
-            # This is equivalent to knowing how many of the original points cover the vertex
-            covered_points = sum(1 for j in range(len(point_inside)) if np.linalg.norm(point_inside[j] - furthest_vertex) < radios[j])
-            # Actualizar si este vértice cubre menos puntos originales
-            if covered_points < min_covered_points:
-                min_covered_points = covered_points
-                selected_vertex = furthest_vertex
-    return selected_vertex
 
-def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot, vertices, distances, model, global_lipschitz_constant, x_lim, y_lim,monotone_relations,variable_index,n_variables,plot_voronoi=False, epsilon=1e-5, max_iterations=10):
+            # Precompute distances between point_inside and furthest_vertex
+            distances_to_furthest = np.linalg.norm(point_inside - furthest_vertex, axis=1)
+
+            # Count covered points using vectorized operations
+            covered_points = np.sum(distances_to_furthest < radios)
+
+            #if covered_points < min_covered_points:
+            ## If the number of covered points is less than the minimum covered points or the number of covered points is the same but the radio is greater
+            if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] < min_radio):
+                    min_covered_points = covered_points
+                    min_radio = radios[i]
+                    selected_vertex_min = furthest_vertex
+            if covered_points < min_covered_points or (covered_points == min_covered_points and radios[i] > max_radio):
+                    min_covered_points = covered_points
+                    max_radio = radios[i]
+                    selected_vertex_max = furthest_vertex
+        else:
+            ## Extract the point and the region index
+            point = finite_vor.points[indices_inside[i]]
+            ## Check that the radio matches the point
+            point_radio = np.array(ast.literal_eval(list(dict_radios.keys())[i]),dtype=np.float32)
+            assert np.allclose(point, point_radio, atol=1e-8), "The points are not the same, and therefore the radio is not the correct one"
+            
+            ## Extract the region index and vertices for the point i
+            region_idx = finite_vor.point_region[indices_inside[i]]
+            region_vertices = finite_vor.vertices[finite_vor.regions[region_idx]]
+
+            ## If the Voronoi cell is already filled, we increase the counter
+            vertex_covered_count += 1
+            ## If the voronoi cell is filled compute the volume of the polytope
+            
+            ##Project the points inside the hypercube
+            #region_vertices = proyection_hypercube_vectorized(region_vertices, vertices)
+            volume = compute_polytope_volume(region_vertices) 
+            volume_covered += volume
+
+    if np.random.rand() < probability:
+        selected_vertex = selected_vertex_min
+    else:
+        selected_vertex = selected_vertex_max
+    return selected_vertex,volume_covered, vertex_covered_count  # Return the counter along with the selected vertex
+
+def add_points_to_voronoi(original_vor, original_points, finite_vor, dict_radios, vertices, distances, 
+                          model,actfunc, global_lipschitz_constant, intervals,monotone_relations,variable_index,
+                          n_variables, epsilon_derivative, probability, mode='neuralsens',plot_voronoi=False, epsilon=1e-5, max_iterations=10):
     """
     Add points to a Voronoi diagram using the furthest vertex for each point.
 
@@ -494,7 +734,6 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
         original_vor (scipy.spatial.Voronoi): The original Voronoi diagram.
         original_points (numpy.ndarray): The original points in the Voronoi diagram.
         finite_vor (scipy.spatial.Voronoi): The finite Voronoi diagram (with the added symmetric points)
-        radius_tot (numpy.ndarray): The radii for each point in the Voronoi diagram.
         vertices (numpy.ndarray): The vertices defining the hypercube.
         distances (dict): The distances for each point in the Voronoi diagram.
         model (torch.nn.Module): The trained model.
@@ -511,48 +750,105 @@ def add_points_to_voronoi(original_vor, original_points, finite_vor, radius_tot,
     Returns:
         numpy.ndarray: The updated original points in the Voronoi diagram.
     """
+    ##################################################    MODIFICAR PARA QUE INCLUYA DICT RADIOS Y NO RADIOS
     ## Define the coordinates of the square's vertices
-    square_vertices = np.array([[x_lim[0], y_lim[0]], [x_lim[0], y_lim[1]], [x_lim[1], y_lim[1]], [x_lim[1], y_lim[0]], [x_lim[0], y_lim[0]]])
+    #square_vertices = np.array([[x_lim[0], y_lim[0]], [x_lim[0], y_lim[1]], [x_lim[1], y_lim[1]], [x_lim[1], y_lim[0]], [x_lim[0], y_lim[0]]])
 
     ## Generate vertices for a hypercube (n-dimensional cube) defined by the given interval with the given extension
-    intervals_extended = [(x_lim[0] - epsilon, x_lim[1] + epsilon), (y_lim[0] - epsilon, y_lim[1] + epsilon)]
+    #intervals_extended = [(x_lim[0] - epsilon, x_lim[1] + epsilon), (y_lim[0] - epsilon, y_lim[1] + epsilon)]
+    intervals_extended = [(x - epsilon, y + epsilon) for x, y in intervals]
     vertices_extended = generate_hypercube_vertices(intervals_extended)
 
-    for i in range(max_iterations):
+    ## Boolean warning to print if there are points not following the monotone relation
+    warning = False
+    
+    if mode == 'neuralsens':
+        print('Using NeuralSens')
+        weights, biases = get_weights_and_biases(model)
+    elif mode == 'autograd':
+        print('Using autograd')
+    else:
+        raise ValueError('The mode must be either autograd or neuralsens')
+    
+    pbar = tqdm(range(max_iterations), desc="Processing iterations")
+    for i in pbar:
+        ## Set description of the pbar
+        pbar.set_description("Processing iteration {}".format(i+1))
         ## Add new point
-        selected_vertex = add_new_point(finite_vor, vertices, distances, radius_tot)
+        #selected_vertex = add_new_point(finite_vor, vertices, distances, dict_radios)
+        selected_vertex,volume_covered,vertex_covered_count = add_new_point_vectorized(finite_vor=finite_vor, vertices=vertices, distances=distances, dict_radios=dict_radios,probability=probability)
+        ## Show in the pbar the number of vertex covered out of the total number of vertices
+        percentage_covered = (vertex_covered_count / len(distances)) * 100
+        percentage_volume_covered = (volume_covered / compute_polytope_volume(vertices_extended)) * 100
+        pbar.set_postfix({'Percentage of vertex covered': f'{percentage_covered:.2f}%', 'Percentage of Volume Verified': f'{percentage_volume_covered:.2f}%'})
+        
         ## Project the new point to the hypercube (because of the extension it may be outside the hypercube)
         selected_vertex = proyection_hypercube(selected_vertex, vertices)
-        ## Add the new point to the original points
-        original_points = np.vstack((original_points, selected_vertex))
+
+        ## Checks if selected vertex is already in the original points
+        ## In that case the loop has to stop because the dictionary cannot have two arrays with the same key
+        if np.any(np.all(np.isclose(original_points, selected_vertex,rtol=1e-07), axis=1)):
+            print('The selected vertex is already in the original points and the vertex is {}'.format(selected_vertex))
+            break
+        else:
+            ## Add the new point to the original points
+            original_points = np.vstack((original_points, selected_vertex))
         ## Add the new point to the inputs
         inputs = torch.tensor(original_points, dtype=torch.float)
+        
         ## Add the new point to the Voronoi diagram
         original_vor.add_points(selected_vertex.reshape(1, -1))
         ## Compute the new finite Voronoi diagram with the new point
-        all_points = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
+        all_points, _ = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
         finite_vor = Voronoi(all_points, incremental=True)
+        
+        """ ## Para intentar evitar recalcular
+        all_points, symmetric_points = add_symmetric_points(original_vor, vertices_extended, intervals_extended)
+        ### Check if symmetric points is not an empty array:
+        print(symmetric_points)
+        if symmetric_points.shape[0]!=0:        
+            finite_vor.add_points(np.array(symmetric_points))"""
+
         ## Compute the new radios for each point
-        radius_tot, dict_radios, _ = get_lipschitz_radius(inputs=inputs, model=model, global_lipschitz_constant=global_lipschitz_constant, monotone_relation=monotone_relations, variable_index=variable_index, n_variables=n_variables)
+        if mode=='autograd':
+            ## Raise a Warning that this option is not updated
+            print('The autograd option is not updated')
+            radius_tot, dict_radios, x_reentrenamiento = get_lipschitz_radius(inputs=inputs, model=model, global_lipschitz_constant=global_lipschitz_constant, 
+                                                                            monotone_relation=monotone_relations, variable_index=variable_index, n_variables=n_variables)
+        elif mode=='neuralsens':
+            radius_tot, dict_radios, x_reentrenamiento,no_points = get_lipschitz_radius_neuralsens(inputs=inputs, outputs=[], weights=weights, biases=biases, actfunc=actfunc, 
+                                                                                        global_lipschitz_constant=global_lipschitz_constant, 
+                                                                                        monotone_relation=monotone_relations, variable_index=variable_index, 
+                                                                                        n_variables=n_variables,epsilon_derivative=epsilon_derivative)
+
         derivative_sign = [v[1] for _, v in dict_radios.items()]
         ## Plot Voronoi diagram
-        if plot_voronoi:
-            plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
+        if plot_voronoi and len(intervals) == 2:
+            plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
         ## Check if the space is filled
-        i += 1
-        space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
-        
-        if space_filled:
-            print('The space is filled: {} after {} iterations '.format(space_filled,i))
+        #space_filled, distances = check_space_filled(finite_vor, radius_tot, vertices)
+        space_filled, distances = check_space_filled_vectorized(finite_vor, dict_radios, vertices)
+        ## Check if the space is filled and there are no points not satisfying the monotone relation
+        if space_filled and no_points:
+            print('The space is filled: {} after {} iterations '.format(space_filled,i+1))
             break
-    plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=square_vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
+        elif x_reentrenamiento.shape[0]!=0 and not warning and not no_points:
+            print('The retraining set is not empty and therefore the space cannot be filled')
+            warning = True
 
+    if len(intervals) == 2:
+        plot_finite_voronoi_2D(vor=finite_vor, all_points=all_points, original_points=original_points, radios=radius_tot, boundary=vertices, derivative_sign=derivative_sign, plot_symmetric_points=False)
+
+    return x_reentrenamiento
 
 
 def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,derivative_sign,plot_symmetric_points=False):
     # Plot Voronoi diagram with dashed lines for finite regions
     fig, ax = plt.subplots(figsize=(8, 8))
     ## Comenzamos definiendo el boundary polygon
+    ## Check if fist and last element from boundary is the same if not add it
+    if not np.array_equal(boundary[0],boundary[-1]):
+       boundary = np.vstack((boundary,boundary[0]))
     boundary_polygon = Polygon(boundary)
 
     # Plot Voronoi regions
@@ -593,12 +889,12 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
 
 
     x,y = boundary_polygon.exterior.xy
-    plt.plot(x, y, 'b-', label='Square')
+    #plt.plot(x, y, 'b-', label='Square')
     # Plot original points
-    ## Dibujamos ahor alos puntos simulados
+    ##
     if plot_symmetric_points:
         plt.plot(all_points[:, 0], all_points[:, 1], 'go')
-    plt.plot(original_points[:, 0], original_points[:, 1], 'ro', markersize=2)
+    #plt.plot(original_points[:, 0], original_points[:, 1], 'ko', markersize=2)
 
     ## Añadimos al dibujo los radios aleatorios
     for i in range(len(original_points)):
@@ -607,6 +903,10 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
         else:
             plt.gca().add_patch(Circle(original_points[i], radios[i], color='r', alpha=0.25))
 
+    mono_points = [i for i, sign in enumerate(derivative_sign) if sign == 1]
+    non_mono_points = [i for i, sign in enumerate(derivative_sign) if sign == -1]
+    plt.plot(original_points[mono_points, 0], original_points[mono_points, 1], 'b.', markersize=8,label = 'Partial Monotonic Points')
+    plt.plot(original_points[non_mono_points, 0], original_points[non_mono_points, 1], 'ro', markersize=8,label = 'Non-Monotonic Points')
     if plot_symmetric_points:
         plt.title('Voronoi Diagram with Symmetric Points')
         plt.xlim(vor.min_bound[0] - 0.2, vor.max_bound[0] + 0.2)
@@ -618,36 +918,75 @@ def plot_finite_voronoi_2D(vor,all_points,original_points,radios,boundary,deriva
         plt.ylim(min(y)-0.2, max(y)+0.2)
 
     plt.gca().set_aspect('equal', adjustable='box')
+    plt.legend(prop={'size': 12})
     plt.show()
 
-def plot_finite_voronoi_3D(vor,all_points,original_points,plot_symmetric_points=False):
+
+###### PLOT VORONOI IN 3D
+def ms(x, y, z, radius, resolution=20):
+    """Return the coordinates for plotting a sphere centered at (x,y,z)"""
+    u, v = np.mgrid[0:2*np.pi:resolution*2j, 0:np.pi:resolution*1j]
+    X = radius * np.cos(u)*np.sin(v) + x
+    Y = radius * np.sin(u)*np.sin(v) + y
+    Z = radius * np.cos(v) + z
+    return (X, Y, Z)    
+
+def plot_finite_voronoi_3D(vor,all_points,original_points,radios,vertices,plot_symmetric_points=False):
 
     # Crea una lista para almacenar los polígonos de Voronoi
     polygons = []
-
+    radii = np.random.rand(original_points.shape[0])
     # Para cada celda de Voronoi, crea un objeto Polygon3D
-    for region in vor.regions:
+    """for region in vor.regions:
         if not -1 in region and len(region) > 0:
-            vertices = [vor.vertices[i] for i in region]
-            polygons.append(go.Mesh3d(x=[v[0] for v in vertices],
-                                    y=[v[1] for v in vertices],
-                                    z=[v[2] for v in vertices],
-                                    opacity=0.2, alphahull=0, colorscale='Viridis'))
+            region_vertices = vor.vertices[region]
+            #if is_inside_hypercube(region_vertices,vertices):
+            region_vertices = [vor.vertices[i] for i in region]
+            ## Check that every vertex is inside 
+            polygons.append(go.Mesh3d(x=[v[0] for v in region_vertices],
+                                        y=[v[1] for v in region_vertices],
+                                        z=[v[2] for v in region_vertices],
+                                        opacity=0.1, alphahull=0, colorscale='Viridis'))"""
+    for region_index, region in enumerate(vor.regions):
+        if not -1 in region and len(region) > 0:
+            region_vertices = vor.vertices[region]
+            voronoi_point = vor.points[vor.point_region == region_index][0]
+            if is_inside_hypercube(voronoi_point, vertices):
+                region_vertices = [vor.vertices[i] for i in region]
+                polygons.append(go.Mesh3d(x=[v[0] for v in region_vertices],
+                                        y=[v[1] for v in region_vertices],
+                                        z=[v[2] for v in region_vertices],
+                                        opacity=0.1, alphahull=0, colorscale='Viridis'))
 
     # Crea una gráfica 3D de dispersión para los puntos de entrada
     if plot_symmetric_points:
         scatter = go.Scatter3d(x=all_points[:, 0], y=all_points[:, 1], z=all_points[:, 2], mode='markers', marker=dict(size=5))
     scatter_original = go.Scatter3d(x=original_points[:, 0], y=original_points[:, 1], z=original_points[:, 2], mode='markers', marker=dict(size=5))
 
+    data_sph =[]
+    ## PLOT SPHERES
+    for i,point in enumerate(original_points):
+        x_pns_surface, y_pns_surface, z_pns_suraface = ms(point[0], point[1], point[2], radios[i])
+        data_sph.append(go.Surface(x=x_pns_surface, y=y_pns_surface, z=z_pns_suraface, colorscale='reds', opacity=0.2, showscale=False))
     # Crea la figura 3D
     if plot_symmetric_points:
         fig = go.Figure(data=[scatter] +[scatter_original]+ polygons)
     else:
-        fig = go.Figure(data=[scatter_original]+ polygons)
+        fig = go.Figure(data=[scatter_original]+ polygons + data_sph)
+
+
+
+    # Limita los valores de x, y y z al máximo y mínimo de los puntos originales
+    x_min, x_max = np.min(original_points[:, 0]) - 1, np.max(original_points[:, 0]) + 1
+    y_min, y_max = np.min(original_points[:, 1]) - 1, np.max(original_points[:, 1]) + 1
+    z_min, z_max = np.min(original_points[:, 2]) - 1, np.max(original_points[:, 2]) + 1
 
     # Configura las opciones de diseño
-    fig.update_layout(scene=dict(aspectmode="cube"),height=800, width=800)
+    fig.update_layout(scene=dict(xaxis=dict(range=[x_min, x_max]), 
+                                yaxis=dict(range=[y_min, y_max]), 
+                                zaxis=dict(range=[z_min, z_max]), 
+                                aspectmode="cube"),
+                    height=1000, width=800)
 
     # Muestra la gráfica
     fig.show()
- 

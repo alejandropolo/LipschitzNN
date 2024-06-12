@@ -49,7 +49,6 @@ class DNN(nn.Module):
         self.layers = nn.Sequential(layer_dict)
         
         # He Initialization for linear layers
-        ################## TO-DO: IMPLEMENTAR HE INITIALIZATION PARA TODAS LAS ACTIVACIONES ##################
         for name, module in self.layers.named_children():
             if isinstance(module, nn.Linear):
                 init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='sigmoid')

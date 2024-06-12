@@ -1,0 +1,21 @@
+
+*.pt
+*.pyc
+*.pyc
+*.pyc
+
+## Discard ./Data foler
+./Data
+./logs
+# Ignore everything in the Data folder
+/Data/*
+/Notebooks/Models/*
+/logs/*
+*.png
+Scripts/__pycache__/*
+
+## Ignore Notebook_backup folder
+Notebook_backup/*
+Scripts_backup/*
+Notebooks/tensor_product.ipynb
+Figures/*
